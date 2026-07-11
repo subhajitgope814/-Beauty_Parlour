@@ -369,9 +369,9 @@ const DEFAULT_USERS: User[] = [
     id: 'u-admin',
     email: 'trisha123@gmail.com',
     passwordHash: 'Trisha@123',
-    name: 'Trisha Admin',
+    name: 'Trisha Day',
     role: 'admin',
-    phone: '+1 (555) 019-2834'
+    phone: '8132935520'
   },
   {
     id: 'u-staff',
@@ -494,11 +494,14 @@ export const storage = {
       const users: User[] = JSON.parse(val);
       let changed = false;
       const updatedUsers = users.map(user => {
-        if (user.role === 'admin' && (user.email === 'admin@meraki.com' || user.email === 'admin@trisha.com')) {
-          user.email = 'trisha123@gmail.com';
-          user.passwordHash = 'Trisha@123';
-          user.name = 'Trisha Admin';
-          changed = true;
+        if (user.role === 'admin') {
+          if (user.email !== 'trisha123@gmail.com' || user.passwordHash !== 'Trisha@123' || user.name !== 'Trisha Day' || user.phone !== '8132935520') {
+            user.email = 'trisha123@gmail.com';
+            user.passwordHash = 'Trisha@123';
+            user.name = 'Trisha Day';
+            user.phone = '8132935520';
+            changed = true;
+          }
         }
         return user;
       });

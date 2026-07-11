@@ -56,7 +56,19 @@ export default function App() {
     // For testing/evaluation purposes, keeping it clear but can load active session if present
     const savedSession = localStorage.getItem('meraki_session_user');
     if (savedSession) {
-      setCurrentUser(JSON.parse(savedSession));
+      try {
+        const parsed = JSON.parse(savedSession);
+        if (parsed && parsed.role === 'admin') {
+          parsed.email = 'trisha123@gmail.com';
+          parsed.passwordHash = 'Trisha@123';
+          parsed.name = 'Trisha Day';
+          parsed.phone = '8132935520';
+          localStorage.setItem('meraki_session_user', JSON.stringify(parsed));
+        }
+        setCurrentUser(parsed);
+      } catch (e) {
+        // ignore
+      }
     }
   }, []);
 

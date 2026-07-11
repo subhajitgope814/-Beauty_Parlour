@@ -308,35 +308,6 @@ export default function AuthModal({
                   Register Account
                 </button>
               </div>
-
-              {/* Secure Quick Login helper buttons */}
-              <div className="p-3 bg-sand-50 border border-sand-100 text-left rounded-xs">
-                <span className="block text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2">Simulated Accounts (Click to Auto-fill):</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('customer@trisha.com');
-                      setPassword('customer123');
-                    }}
-                    className="text-[10px] text-charcoal bg-white px-2 py-1.5 border border-sand-100 text-left rounded-xs font-medium hover:bg-sand-100 transition-colors cursor-pointer"
-                  >
-                    <span className="block font-bold">👤 Customer Account</span>
-                    customer@trisha.com
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('trisha123@gmail.com');
-                      setPassword('Trisha@123');
-                    }}
-                    className="text-[10px] text-amber-800 bg-amber-50 px-2 py-1.5 border border-amber-100 text-left rounded-xs font-medium hover:bg-amber-100 transition-colors cursor-pointer"
-                  >
-                    <span className="block font-bold">🔑 Admin Account</span>
-                    trisha123@gmail.com
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 
