@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, Review, Service, AdminSettings } from './types';
 import { storage } from './lib/storage';
-import { saveBookingToSupabase } from './lib/supabase';
+import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase } from './lib/supabase';
 
 // Import our modular components
 import Navbar from './components/Navbar';
@@ -56,6 +56,27 @@ export default function App() {
     setAdminSettings(loadedSettings);
     setServices(loadedServices);
 
+    // Sync with Supabase on load
+    const syncBookings = async () => {
+      const dbBookings = await fetchBookingsFromSupabase();
+      if (dbBookings && dbBookings.length > 0) {
+        setBookings(prevBookings => {
+          // Combine and deduplicate by id
+          const combined = [...dbBookings];
+          prevBookings.forEach(pb => {
+            if (!combined.some(cb => cb.id === pb.id)) {
+              combined.push(pb);
+            }
+          });
+          // Sort by createdAt descending
+          combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          storage.saveBookings(combined);
+          return combined;
+        });
+      }
+    };
+    syncBookings();
+
     // Auto-login simulated customer on start to make demo easy, or keep clean
     // For testing/evaluation purposes, keeping it clear but can load active session if present
     const savedSession = localStorage.getItem('meraki_session_user');
@@ -77,7 +98,7 @@ export default function App() {
   }, []);
 
   // Update localStorage helper wrappers
-  const handleUpdateBookingStatus = (bookingId: string, newStatus: 'confirmed' | 'cancelled') => {
+  const handleUpdateBookingStatus = async (bookingId: string, newStatus: 'confirmed' | 'cancelled') => {
     const updated = bookings.map(b => {
       if (b.id === bookingId) {
         return { ...b, status: newStatus };
@@ -86,6 +107,9 @@ export default function App() {
     });
     setBookings(updated);
     storage.saveBookings(updated);
+
+    // Also update on Supabase backend
+    await updateBookingStatusInSupabase(bookingId, newStatus);
   };
 
   const handleApproveReview = (reviewId: string) => {

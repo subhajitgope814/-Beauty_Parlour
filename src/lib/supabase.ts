@@ -56,3 +56,61 @@ export async function saveBookingToSupabase(booking: Booking): Promise<{ success
     return { success: false, error: err };
   }
 }
+
+/**
+ * Fetches all bookings from Supabase.
+ */
+export async function fetchBookingsFromSupabase(): Promise<Booking[]> {
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*');
+
+    if (error) {
+      console.error('Supabase error fetching bookings:', error);
+      return [];
+    }
+
+    if (!data) return [];
+
+    return data.map((row: any) => ({
+      id: row.id,
+      customerId: row.customer_id || row.customerId || '',
+      customerName: row.customer_name || row.customerName || '',
+      customerEmail: row.customer_email || row.customerEmail || '',
+      customerPhone: row.customer_phone || row.customerPhone || '',
+      serviceId: row.service_id || row.serviceId || '',
+      serviceName: row.service_name || row.serviceName || '',
+      date: row.date || '',
+      time: row.time || '',
+      status: row.status || 'pending',
+      notes: row.notes || '',
+      price: typeof row.price === 'number' ? row.price : parseFloat(row.price || 0),
+      createdAt: row.created_at || row.createdAt || new Date().toISOString()
+    }));
+  } catch (err) {
+    console.error('Failed to fetch bookings from Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Updates a booking status in Supabase.
+ */
+export async function updateBookingStatusInSupabase(bookingId: string, status: 'confirmed' | 'cancelled'): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status })
+      .eq('id', bookingId);
+
+    if (error) {
+      console.error('Supabase error updating booking status:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Failed to update booking status in Supabase:', err);
+    return false;
+  }
+}
