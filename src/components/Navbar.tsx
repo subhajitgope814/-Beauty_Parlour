@@ -61,9 +61,7 @@ export default function Navbar({
               { id: 'reviews', label: 'Guest Reviews' },
               ...(currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff') 
                 ? [{ id: 'admin', label: 'Staff Dashboard' }] 
-                : currentUser 
-                  ? [{ id: 'my-bookings', label: 'My Appointments' }]
-                  : [])
+                : [{ id: 'my-bookings', label: 'My Appointments' }])
             ].map((link) => (
               <button
                 key={link.id}
@@ -169,18 +167,27 @@ export default function Navbar({
           Expertise
         </button>
         <button
-          onClick={() => setActiveSection('reviews')}
-          className={`text-xs uppercase font-medium tracking-wider ${activeSection === 'reviews' ? 'text-sand-200' : 'text-charcoal'}`}
+          onClick={() => setActiveSection('my-bookings')}
+          className={`text-xs uppercase font-medium tracking-wider ${activeSection === 'my-bookings' ? 'text-sand-200' : 'text-charcoal'}`}
         >
-          Reviews
+          Bookings
         </button>
         {currentUser ? (
-          <button
-            onClick={() => setActiveSection(currentUser.role === 'customer' ? 'my-bookings' : 'admin')}
-            className={`text-xs uppercase font-medium tracking-wider text-amber-800 font-semibold`}
-          >
-            {currentUser.role === 'customer' ? 'Bookings' : 'Dashboard'}
-          </button>
+          currentUser.role === 'admin' || currentUser.role === 'staff' ? (
+            <button
+              onClick={() => setActiveSection('admin')}
+              className={`text-xs uppercase font-medium tracking-wider text-amber-800 font-semibold ${activeSection === 'admin' ? 'text-amber-600' : ''}`}
+            >
+              Admin
+            </button>
+          ) : (
+            <button
+              onClick={onLogout}
+              className="text-xs uppercase font-medium tracking-wider text-red-600 font-semibold"
+            >
+              Logout
+            </button>
+          )
         ) : (
           <button
             onClick={() => onOpenAuth('login')}
