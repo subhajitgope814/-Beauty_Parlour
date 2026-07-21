@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Booking, Review, AdminSettings, User } from '../types';
-import { Calendar, Clock, DollarSign, Users, Check, X, ShieldAlert, Phone, Trash2, CheckCircle, FileText, Star, Settings } from 'lucide-react';
+import { Calendar, Clock, DollarSign, Users, Check, X, ShieldAlert, Phone, Trash2, CheckCircle, FileText, Star, Settings, MessageSquare } from 'lucide-react';
 
 interface AdminPanelProps {
   bookings: Booking[];
@@ -9,6 +9,7 @@ interface AdminPanelProps {
   currentUser: User | null;
   onUpdateBookingStatus: (bookingId: string, newStatus: 'confirmed' | 'cancelled') => void;
   onApproveReview: (reviewId: string) => void;
+  onToggleReviewApproval: (reviewId: string, approved: boolean) => void;
   onDeleteReview: (reviewId: string) => void;
   onUpdateSettings: (newSettings: AdminSettings) => void;
 }
@@ -20,6 +21,7 @@ export default function AdminPanel({
   currentUser,
   onUpdateBookingStatus,
   onApproveReview,
+  onToggleReviewApproval,
   onDeleteReview,
   onUpdateSettings
 }: AdminPanelProps) {
@@ -31,6 +33,9 @@ export default function AdminPanel({
 
   // Filter state for Bookings
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all');
+
+  // Filter state for Reviews
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved'>('all');
 
   // Stats calculation
   const totalBookings = bookings.length;
@@ -44,6 +49,13 @@ export default function AdminPanel({
   const filteredBookings = bookings.filter(b => {
     if (statusFilter === 'all') return true;
     return b.status === statusFilter;
+  });
+
+  // Filtered reviews
+  const filteredReviews = reviews.filter(r => {
+    if (reviewFilter === 'all') return true;
+    if (reviewFilter === 'pending') return !r.approved;
+    return r.approved;
   });
 
   const handleSettingsSubmit = (e: React.FormEvent) => {
@@ -255,6 +267,122 @@ export default function AdminPanel({
             )}
           </div>
 
+        </div>
+
+        {/* Guest Reviews Moderation Section */}
+        <div className="space-y-8 border-t border-sand-100 pt-12" id="admin-reviews-management">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-sand-100 pb-3 gap-3">
+            <div>
+              <h3 className="title-font text-2xl font-light text-charcoal flex items-center gap-2">
+                <MessageSquare className="w-6 h-6 text-sand-200" />
+                Guest Reviews Moderation
+              </h3>
+              <p className="text-xs text-gray-500 font-light mt-1">
+                Approve, hide, or delete reviews from the public homepage.
+              </p>
+            </div>
+            
+            {/* Filter Toggle Pill tabs */}
+            <div className="flex bg-sand-100 p-1 gap-1 rounded-xs" id="admin-review-filters">
+              {(['all', 'pending', 'approved'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setReviewFilter(filter)}
+                  className={`px-3 py-1 text-[10px] uppercase font-bold tracking-wider rounded-xs transition-all duration-300 cursor-pointer ${
+                    reviewFilter === filter 
+                      ? 'bg-white text-charcoal shadow-2xs hover:scale-105' 
+                      : 'text-gray-500 hover:text-charcoal hover:bg-white/40'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="admin-reviews-list">
+            {filteredReviews.length === 0 ? (
+              <div className="md:col-span-2 bg-white border border-dashed border-sand-100 rounded-xs py-16 text-center">
+                <MessageSquare className="w-10 h-10 text-gray-300 mx-auto mb-3 animate-pulse" />
+                <p className="text-sm text-gray-500 italic">No reviews match the selected filter.</p>
+              </div>
+            ) : (
+              filteredReviews.map((review) => (
+                <div 
+                  key={review.id} 
+                  className={`bg-white border p-6 shadow-2xs hover:shadow-xs transition-all duration-300 relative rounded-xs flex flex-col justify-between ${
+                    review.approved 
+                      ? 'border-l-4 border-l-green-500 border-sand-100' 
+                      : 'border-l-4 border-l-amber-500 border-sand-100'
+                  }`}
+                >
+                  <div>
+                    <div className="flex justify-between items-start gap-4 mb-3">
+                      <div>
+                        <span className="font-serif text-charcoal font-medium text-base block">
+                          {review.customerName}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          {review.date}
+                        </span>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className={`px-2 py-0.5 text-[9px] uppercase font-bold rounded-xs tracking-wider ${
+                          review.approved ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {review.approved ? 'Approved' : 'Pending Moderation'}
+                        </span>
+                        <div className="flex text-amber-500">
+                          {Array.from({ length: 5 }).map((_, idx) => (
+                            <Star 
+                              key={idx} 
+                              className={`w-3 h-3 ${idx < review.rating ? 'fill-amber-500 text-amber-500' : 'text-gray-200'}`} 
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs sm:text-sm text-gray-600 font-light italic bg-sand-50/50 p-3 border border-sand-50/60 rounded-xs mb-4 leading-relaxed">
+                      "{review.comment}"
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-3 border-t border-sand-100/50 mt-2">
+                    <button
+                      onClick={() => onDeleteReview(review.id)}
+                      className="px-3 py-1.5 border border-red-100 text-red-600 hover:bg-red-50 hover:border-red-400 text-[10px] uppercase tracking-wider font-bold rounded-xs transition-all duration-300 cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95 mr-auto"
+                      title="Permanently delete this review"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Delete
+                    </button>
+
+                    {review.approved ? (
+                      <button
+                        onClick={() => onToggleReviewApproval(review.id, false)}
+                        className="px-3 py-1.5 border border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-400 text-[10px] uppercase tracking-wider font-bold rounded-xs transition-all duration-300 cursor-pointer flex items-center gap-1 hover:scale-105 active:scale-95"
+                        title="Hide this review from the homepage"
+                      >
+                        <X className="w-3 h-3" />
+                        Hide Review
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => onToggleReviewApproval(review.id, true)}
+                        className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-[10px] uppercase tracking-wider font-bold rounded-xs transition-all duration-300 cursor-pointer flex items-center gap-1 shadow-xs hover:scale-105 active:scale-95"
+                        title="Approve and publish this review on the homepage"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Approve Review
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
       </div>

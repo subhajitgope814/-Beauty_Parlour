@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, Review, Service, AdminSettings } from './types';
 import { storage } from './lib/storage';
-import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors } from './lib/supabase';
+import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors, saveReviewToSupabase, fetchReviewsFromSupabase, updateReviewApprovalInSupabase, deleteReviewFromSupabase } from './lib/supabase';
 
 // Import our modular components
 import Navbar from './components/Navbar';
@@ -83,6 +83,26 @@ export default function App() {
     };
     syncBookings();
 
+    const syncReviews = async () => {
+      const dbReviews = await fetchReviewsFromSupabase();
+      if (dbReviews && dbReviews.length > 0) {
+        setReviews(prevReviews => {
+          // Combine and deduplicate by id
+          const combined = [...dbReviews];
+          prevReviews.forEach(pr => {
+            if (!combined.some(cr => cr.id === pr.id)) {
+              combined.push(pr);
+            }
+          });
+          // Sort by date descending
+          combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          storage.saveReviews(combined);
+          return combined;
+        });
+      }
+    };
+    syncReviews();
+
     // Auto-login simulated customer on start to make demo easy, or keep clean
     // For testing/evaluation purposes, keeping it clear but can load active session if present
     const savedSession = localStorage.getItem('meraki_session_user');
@@ -128,7 +148,7 @@ export default function App() {
     await updateBookingStatusInSupabase(bookingId, newStatus);
   };
 
-  const handleApproveReview = (reviewId: string) => {
+  const handleApproveReview = async (reviewId: string) => {
     const updated = reviews.map(r => {
       if (r.id === reviewId) {
         return { ...r, approved: true };
@@ -137,12 +157,32 @@ export default function App() {
     });
     setReviews(updated);
     storage.saveReviews(updated);
+
+    // Sync with Supabase
+    await updateReviewApprovalInSupabase(reviewId, true);
   };
 
-  const handleDeleteReview = (reviewId: string) => {
+  const handleToggleReviewApproval = async (reviewId: string, approved: boolean) => {
+    const updated = reviews.map(r => {
+      if (r.id === reviewId) {
+        return { ...r, approved };
+      }
+      return r;
+    });
+    setReviews(updated);
+    storage.saveReviews(updated);
+
+    // Sync with Supabase
+    await updateReviewApprovalInSupabase(reviewId, approved);
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
     const updated = reviews.filter(r => r.id !== reviewId);
     setReviews(updated);
     storage.saveReviews(updated);
+
+    // Sync with Supabase
+    await deleteReviewFromSupabase(reviewId);
   };
 
   const handleUpdateSettings = (newSettings: AdminSettings) => {
@@ -309,7 +349,7 @@ export default function App() {
       />
 
       {/* Supabase Error Alert Banner */}
-      {supabaseError && (
+      {supabaseError && activeSection === 'admin' && (
         <div className="bg-amber-50 border-b border-amber-200 py-3.5 px-4 sm:px-6 lg:px-8 shadow-xs relative z-30">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -732,6 +772,7 @@ export default function App() {
                 currentUser={currentUser}
                 onUpdateBookingStatus={handleUpdateBookingStatus}
                 onApproveReview={handleApproveReview}
+                onToggleReviewApproval={handleToggleReviewApproval}
                 onDeleteReview={handleDeleteReview}
                 onUpdateSettings={handleUpdateSettings}
               />

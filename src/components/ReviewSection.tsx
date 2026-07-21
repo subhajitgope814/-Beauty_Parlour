@@ -71,8 +71,54 @@ export default function ReviewSection({ reviews, onAddReview, currentUser }: Rev
               Stories of Transformation ({approvedReviews.length})
             </h3>
 
+            {/* Average Rating & Total Reviews Dashboard Card */}
+            {approvedReviews.length > 0 && (
+              <div className="bg-white p-6 border border-sand-100 shadow-3xs flex flex-col sm:flex-row items-center justify-between gap-6 rounded-xs mb-8" id="reviews-dashboard-card">
+                <div className="text-center sm:text-left">
+                  <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400 block mb-1">AVERAGE SCORE</span>
+                  <div className="flex items-baseline justify-center sm:justify-start gap-1">
+                    <span className="text-5xl font-serif text-charcoal font-semibold leading-none">
+                      {(approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length).toFixed(1)}
+                    </span>
+                    <span className="text-sm text-gray-400">/ 5.0</span>
+                  </div>
+                </div>
+
+                <div className="flex-1 max-w-[200px] w-full text-center sm:text-left">
+                  <div className="flex justify-center sm:justify-start text-amber-500 mb-1.5" id="reviews-average-stars">
+                    {Array.from({ length: 5 }).map((_, idx) => {
+                      const avg = approvedReviews.reduce((sum, r) => sum + r.rating, 0) / approvedReviews.length;
+                      const starVal = idx + 1;
+                      const isFull = starVal <= Math.floor(avg);
+                      const isHalf = !isFull && (starVal - 0.5 <= avg);
+                      return (
+                        <Star 
+                          key={idx} 
+                          className={`w-5 h-5 ${isFull ? 'fill-amber-500 text-amber-500' : isHalf ? 'fill-amber-500/50 text-amber-500' : 'text-gray-200'}`} 
+                        />
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 font-light">Based on <strong className="text-charcoal font-medium">{approvedReviews.length} verified</strong> guest experiences</p>
+                </div>
+
+                <div className="text-center sm:text-right hidden sm:block">
+                  <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider rounded-full border border-green-100">
+                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                    100% Verified
+                  </span>
+                </div>
+              </div>
+            )}
+
             {approvedReviews.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No approved reviews yet. Be the first to share your experience!</p>
+              <div className="bg-white border border-dashed border-sand-100 py-16 px-6 text-center rounded-xs shadow-3xs" id="no-reviews-fallback">
+                <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4 animate-pulse" />
+                <h4 className="font-serif text-charcoal text-base font-medium mb-1">No Reviews Yet</h4>
+                <p className="text-xs text-gray-500 max-w-sm mx-auto font-light leading-relaxed mb-4">
+                  Be the very first guest to write about your hair makeover or skincare treatment.
+                </p>
+              </div>
             ) : (
               <div className="space-y-6">
                 {approvedReviews.map((review) => (

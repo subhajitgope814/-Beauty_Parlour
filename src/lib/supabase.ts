@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Booking } from '../types';
+import { Booking, Review } from '../types';
 
 // Supabase configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jnhcswiajmdoxdhgfjvd.supabase.co';
@@ -144,3 +144,123 @@ export async function updateBookingStatusInSupabase(bookingId: string, status: '
     return false;
   }
 }
+
+/**
+ * Saves a new review into Supabase 'reviews' table.
+ */
+export async function saveReviewToSupabase(review: Review): Promise<{ success: boolean; error: any }> {
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .insert([
+        {
+          id: review.id,
+          customer_name: review.customerName,
+          rating: review.rating,
+          comment: review.comment,
+          date: review.date,
+          approved: review.approved
+        }
+      ]);
+
+    if (error) {
+      console.warn('Supabase message inserting into reviews:', error);
+      setLastSupabaseError(error);
+      return { success: false, error };
+    }
+
+    console.log('Successfully saved review to Supabase:', review.id);
+    clearSupabaseError();
+    return { success: true, error: null };
+  } catch (err) {
+    console.warn('Failed to communicate with Supabase for review:', err);
+    setLastSupabaseError(err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Fetches all reviews from Supabase.
+ */
+export async function fetchReviewsFromSupabase(): Promise<Review[]> {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .order('date', { ascending: false });
+
+    if (error) {
+      console.warn('Supabase message fetching reviews:', error);
+      setLastSupabaseError(error);
+      return [];
+    }
+
+    if (!data) return [];
+
+    clearSupabaseError();
+
+    return data.map((row: any) => ({
+      id: row.id,
+      customerName: row.customer_name || row.customerName || '',
+      rating: typeof row.rating === 'number' ? row.rating : parseInt(row.rating || 5),
+      comment: row.comment || '',
+      date: row.date || '',
+      approved: row.approved !== undefined ? row.approved : true
+    }));
+  } catch (err) {
+    console.warn('Failed to fetch reviews from Supabase:', err);
+    setLastSupabaseError(err);
+    return [];
+  }
+}
+
+/**
+ * Updates a review's approval status in Supabase.
+ */
+export async function updateReviewApprovalInSupabase(reviewId: string, approved: boolean): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .update({ approved })
+      .eq('id', reviewId);
+
+    if (error) {
+      console.warn('Supabase message updating review approval status:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to update review approval in Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
+/**
+ * Deletes a review from Supabase.
+ */
+export async function deleteReviewFromSupabase(reviewId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('id', reviewId);
+
+    if (error) {
+      console.warn('Supabase message deleting review:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete review from Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
