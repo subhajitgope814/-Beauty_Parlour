@@ -131,7 +131,7 @@ export async function fetchBookingsFromSupabase(userId?: string, isAdmin?: boole
 /**
  * Updates a booking status in Supabase.
  */
-export async function updateBookingStatusInSupabase(bookingId: string, status: 'confirmed' | 'cancelled'): Promise<boolean> {
+export async function updateBookingStatusInSupabase(bookingId: string, status: 'pending' | 'confirmed' | 'cancelled' | 'completed'): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('bookings')
@@ -149,6 +149,75 @@ export async function updateBookingStatusInSupabase(bookingId: string, status: '
     return true;
   } catch (err) {
     console.warn('Failed to update booking status in Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
+/**
+ * Updates an entire booking's details in Supabase.
+ */
+export async function updateBookingInSupabase(bookingId: string, updatedFields: Partial<Booking>): Promise<boolean> {
+  try {
+    const payload: any = {};
+    if (updatedFields.customerName !== undefined) payload.customer_name = updatedFields.customerName;
+    if (updatedFields.customerPhone !== undefined) payload.customer_phone = updatedFields.customerPhone;
+    if (updatedFields.customerEmail !== undefined) payload.customer_email = updatedFields.customerEmail;
+    if (updatedFields.serviceName !== undefined) payload.service_name = updatedFields.serviceName;
+    if (updatedFields.serviceId !== undefined) payload.service_id = updatedFields.serviceId;
+    if (updatedFields.date !== undefined) {
+      payload.booking_date = updatedFields.date;
+      payload.date = updatedFields.date;
+    }
+    if (updatedFields.time !== undefined) {
+      payload.booking_time = updatedFields.time;
+      payload.time = updatedFields.time;
+    }
+    if (updatedFields.price !== undefined) payload.price = updatedFields.price;
+    if (updatedFields.notes !== undefined) payload.notes = updatedFields.notes;
+    if (updatedFields.status !== undefined) payload.status = updatedFields.status;
+    payload.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('bookings')
+      .update(payload)
+      .eq('id', bookingId);
+
+    if (error) {
+      console.warn('Supabase message updating booking:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to update booking in Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
+/**
+ * Deletes a booking from Supabase.
+ */
+export async function deleteBookingFromSupabase(bookingId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('id', bookingId);
+
+    if (error) {
+      console.warn('Supabase message deleting booking:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete booking from Supabase:', err);
     setLastSupabaseError(err);
     return false;
   }

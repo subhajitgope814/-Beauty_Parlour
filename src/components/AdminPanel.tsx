@@ -21,7 +21,13 @@ import {
   SlidersHorizontal,
   Sparkles,
   MapPin,
-  Save
+  Save,
+  Search,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Mail
 } from 'lucide-react';
 
 interface AdminPanelProps {
@@ -30,7 +36,9 @@ interface AdminPanelProps {
   services: Service[];
   adminSettings: AdminSettings;
   currentUser: User | null;
-  onUpdateBookingStatus: (bookingId: string, newStatus: 'confirmed' | 'cancelled') => void;
+  onUpdateBookingStatus: (bookingId: string, newStatus: 'pending' | 'confirmed' | 'cancelled' | 'completed') => void;
+  onUpdateBooking: (bookingId: string, updatedFields: Partial<Booking>) => void;
+  onDeleteBooking: (bookingId: string) => void;
   onApproveReview: (reviewId: string) => void;
   onToggleReviewApproval: (reviewId: string, approved: boolean) => void;
   onDeleteReview: (reviewId: string) => void;
@@ -60,6 +68,8 @@ export default function AdminPanel({
   adminSettings,
   currentUser,
   onUpdateBookingStatus,
+  onUpdateBooking,
+  onDeleteBooking,
   onApproveReview,
   onToggleReviewApproval,
   onDeleteReview,
@@ -77,8 +87,25 @@ export default function AdminPanel({
   const [salonAddress, setSalonAddress] = useState(adminSettings.salonAddress);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
-  // Filter state for Bookings
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all');
+  // Filter & Search states for Bookings
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
+
+  // Edit Booking Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [editFormName, setEditFormName] = useState('');
+  const [editFormPhone, setEditFormPhone] = useState('');
+  const [editFormEmail, setEditFormEmail] = useState('');
+  const [editFormServiceName, setEditFormServiceName] = useState('');
+  const [editFormPrice, setEditFormPrice] = useState('');
+  const [editFormDate, setEditFormDate] = useState('');
+  const [editFormTime, setEditFormTime] = useState('');
+  const [editFormNotes, setEditFormNotes] = useState('');
+  const [editFormStatus, setEditFormStatus] = useState<'pending' | 'confirmed' | 'completed' | 'cancelled'>('pending');
 
   // Filter state for Reviews
   const [reviewFilter, setReviewFilter] = useState<'all' | 'pending' | 'approved'>('all');
@@ -95,19 +122,69 @@ export default function AdminPanel({
   const [serviceIsActive, setServiceIsActive] = useState(true);
   const [formSuccessMessage, setFormSuccessMessage] = useState('');
 
-  // Stats calculation
+  // 1. Math statistics computations
+  const todayStr = new Date().toISOString().split('T')[0];
   const totalBookings = bookings.length;
   const pendingBookings = bookings.filter(b => b.status === 'pending').length;
   const confirmedBookings = bookings.filter(b => b.status === 'confirmed').length;
-  const projectedRevenue = bookings
-    .filter(b => b.status === 'confirmed')
-    .reduce((sum, b) => sum + b.price, 0);
+  const completedBookings = bookings.filter(b => b.status === 'completed').length;
+  const cancelledBookings = bookings.filter(b => b.status === 'cancelled').length;
+  const todaysBookings = bookings.filter(b => b.date === todayStr).length;
+  const upcomingBookings = bookings.filter(b => b.date > todayStr).length;
 
-  // Filtered bookings
-  const filteredBookings = bookings.filter(b => {
-    if (statusFilter === 'all') return true;
-    return b.status === statusFilter;
-  });
+  const totalRevenue = bookings
+    .filter(b => b.status === 'completed' || b.status === 'confirmed')
+    .reduce((sum, b) => sum + (b.price || 0), 0);
+
+  // 2. Filter & Sort bookings
+  const filteredAndSortedBookings = bookings
+    .filter(b => {
+      // Status Filter
+      if (statusFilter !== 'all' && b.status !== statusFilter) return false;
+
+      // Search Filter (customer name, phone, booking ID, or service name)
+      const term = searchTerm.toLowerCase();
+      if (term) {
+        return (
+          b.customerName?.toLowerCase().includes(term) ||
+          b.customerPhone?.toLowerCase().includes(term) ||
+          b.id?.toLowerCase().includes(term) ||
+          b.serviceName?.toLowerCase().includes(term) ||
+          b.customerEmail?.toLowerCase().includes(term)
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const dateA = new Date(`${a.date}T${convertTo24Hour(a.time)}`).getTime() || 0;
+      const dateB = new Date(`${b.date}T${convertTo24Hour(b.time)}`).getTime() || 0;
+      return sortDirection === 'desc' ? dateB - dateA : dateA - dateB;
+    });
+
+  // Convert time string (e.g. "10:30 AM") to 24hr format for sorting
+  function convertTo24Hour(timeStr: string): string {
+    if (!timeStr) return '00:00';
+    try {
+      const [time, modifier] = timeStr.split(' ');
+      let [hours, minutes] = time.split(':');
+      if (hours === '12') {
+        hours = '00';
+      }
+      if (modifier === 'PM') {
+        hours = String(parseInt(hours, 10) + 12);
+      }
+      return `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`;
+    } catch (e) {
+      return '00:00';
+    }
+  }
+
+  // Pagination bounds
+  const totalPages = Math.ceil(filteredAndSortedBookings.length / itemsPerPage) || 1;
+  const paginatedBookings = filteredAndSortedBookings.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   // Filtered reviews
   const filteredReviews = reviews.filter(r => {
@@ -193,40 +270,139 @@ export default function AdminPanel({
     setIsFormOpen(false);
   };
 
+  // 3. Export bookings as CSV
+  const handleExportCSV = () => {
+    const headers = [
+      'Booking ID', 
+      'Customer Name', 
+      'Phone', 
+      'Email', 
+      'Service Name', 
+      'Price (INR)', 
+      'Date', 
+      'Time Slot', 
+      'Status', 
+      'Notes', 
+      'Created At'
+    ];
+    
+    const rows = filteredAndSortedBookings.map(b => [
+      b.id,
+      b.customerName,
+      b.customerPhone,
+      b.customerEmail || '',
+      b.serviceName,
+      b.price,
+      b.date,
+      b.time,
+      b.status,
+      (b.notes || '').replace(/\n/g, ' '),
+      b.createdAt
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `trisha_beauty_parlour_bookings_${todayStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 4. Edit Booking Modal Helpers
+  const handleOpenEditModal = (booking: Booking) => {
+    setEditingBooking(booking);
+    setEditFormName(booking.customerName || '');
+    setEditFormPhone(booking.customerPhone || '');
+    setEditFormEmail(booking.customerEmail || '');
+    setEditFormServiceName(booking.serviceName || '');
+    setEditFormPrice((booking.price || 0).toString());
+    setEditFormDate(booking.date || '');
+    setEditFormTime(booking.time || '');
+    setEditFormNotes(booking.notes || '');
+    setEditFormStatus(booking.status || 'pending');
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditModalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBooking) return;
+
+    const priceNum = parseFloat(editFormPrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      alert('Please enter a valid price');
+      return;
+    }
+
+    const updatedFields: Partial<Booking> = {
+      customerName: editFormName.trim(),
+      customerPhone: editFormPhone.trim(),
+      customerEmail: editFormEmail.trim(),
+      serviceName: editFormServiceName.trim(),
+      price: priceNum,
+      date: editFormDate,
+      time: editFormTime,
+      notes: editFormNotes.trim(),
+      status: editFormStatus
+    };
+
+    onUpdateBooking(editingBooking.id, updatedFields);
+    setIsEditModalOpen(false);
+    setEditingBooking(null);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 animate-fade-in" id="admin-dashboard-view">
       
       {/* Title Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-sand-100 pb-8 mb-10 gap-6">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between border-b border-sand-100 pb-8 mb-10 gap-6">
         <div>
-          <span className="text-[10px] uppercase tracking-widest font-bold text-rose-500 block mb-1">
-            ✨ SALON CONTROL PANEL ✨
+          <span className="text-[10px] uppercase tracking-widest font-extrabold text-rose-500 block mb-1">
+            ✨ SALON CONTROL PORTAL & DASHBOARD ✨
           </span>
           <h2 className="title-font text-3xl sm:text-4xl font-light text-charcoal">
             Trisha Beauty Parlour Admin
           </h2>
           <p className="text-xs text-gray-500 font-light mt-1">
-            Logged in as <strong className="text-charcoal font-semibold">{currentUser?.name}</strong> ({currentUser?.role})
+            Authorized Account: <strong className="text-charcoal font-semibold">{currentUser?.name}</strong> ({currentUser?.role})
           </p>
         </div>
 
-        {/* Rapid Overview Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full lg:w-auto">
-          <div className="bg-white p-4 border border-rose-100/50 text-center rounded-sm transition-all duration-300 hover:scale-105 hover:shadow-xs cursor-pointer group">
-            <span className="block text-xl sm:text-2xl font-serif text-charcoal">{totalBookings}</span>
-            <span className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Total Requests</span>
+        {/* Dynamic Horizontal Overview Stats (7 Cards Bento Grid style) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 w-full xl:w-auto">
+          <div className="bg-white p-3 border border-rose-100/40 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-charcoal font-semibold">{totalBookings}</span>
+            <span className="text-[8px] text-gray-400 uppercase tracking-widest font-bold block mt-0.5">Total Bookings</span>
           </div>
-          <div className="bg-amber-50/50 p-4 border border-amber-100 text-center rounded-sm transition-all duration-300 hover:scale-105 hover:shadow-xs cursor-pointer group">
-            <span className="block text-xl sm:text-2xl font-serif text-amber-800 font-semibold">{pendingBookings}</span>
-            <span className="text-[9px] text-amber-500 uppercase tracking-widest font-bold">Pending</span>
+          <div className="bg-amber-50/50 p-3 border border-amber-100 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-amber-800 font-bold">{pendingBookings}</span>
+            <span className="text-[8px] text-amber-500 uppercase tracking-widest font-bold block mt-0.5">Pending</span>
           </div>
-          <div className="bg-green-50/50 p-4 border border-green-100 text-center rounded-sm transition-all duration-300 hover:scale-105 hover:shadow-xs cursor-pointer group">
-            <span className="block text-xl sm:text-2xl font-serif text-green-800 font-semibold">{confirmedBookings}</span>
-            <span className="text-[9px] text-green-500 uppercase tracking-widest font-bold">Confirmed</span>
+          <div className="bg-blue-50/40 p-3 border border-blue-100 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-blue-800 font-bold">{confirmedBookings}</span>
+            <span className="text-[8px] text-blue-500 uppercase tracking-widest font-bold block mt-0.5">Confirmed</span>
           </div>
-          <div className="bg-charcoal text-sand-50 p-4 border border-charcoal text-center rounded-sm transition-all duration-300 hover:scale-105 hover:shadow-xs cursor-pointer group">
-            <span className="block text-lg sm:text-xl font-mono text-amber-300 font-bold">₹{projectedRevenue}</span>
-            <span className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">Est. Revenue</span>
+          <div className="bg-green-50/40 p-3 border border-green-100 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-green-800 font-bold">{completedBookings}</span>
+            <span className="text-[8px] text-green-500 uppercase tracking-widest font-bold block mt-0.5">Completed</span>
+          </div>
+          <div className="bg-red-50/30 p-3 border border-red-100 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-red-800 font-bold">{cancelledBookings}</span>
+            <span className="text-[8px] text-red-400 uppercase tracking-widest font-bold block mt-0.5">Cancelled</span>
+          </div>
+          <div className="bg-rose-50 p-3 border border-rose-200/40 text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-lg font-serif text-rose-800 font-bold">{todaysBookings}</span>
+            <span className="text-[8px] text-rose-500 uppercase tracking-widest font-bold block mt-0.5">Today's Slots</span>
+          </div>
+          <div className="bg-charcoal text-sand-50 p-3 border border-charcoal text-center rounded-xs shadow-3xs transition-all duration-300 hover:scale-[1.03]">
+            <span className="block text-base font-mono text-amber-300 font-bold">₹{totalRevenue}</span>
+            <span className="text-[8px] text-gray-400 uppercase tracking-widest font-bold block mt-1">Confirmed Rev</span>
           </div>
         </div>
       </div>
@@ -241,7 +417,7 @@ export default function AdminPanel({
               : 'border-transparent text-gray-400 hover:text-charcoal'
           }`}
         >
-          📅 Appointments ({bookings.length})
+          📅 Appointments Queue ({bookings.length})
         </button>
         <button
           onClick={() => { setActiveTab('services'); }}
@@ -281,136 +457,309 @@ export default function AdminPanel({
         {/* PANEL 1: APPOINTMENTS */}
         {activeTab === 'bookings' && (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-rose-100/30 pb-3 gap-3">
-              <h3 className="title-font text-xl text-charcoal font-medium">
-                Appointment Requests Queue
-              </h3>
-              
-              {/* Filter toggles */}
-              <div className="flex bg-rose-50 p-1 gap-1 rounded-xs">
-                {(['all', 'pending', 'confirmed', 'cancelled'] as const).map((filter) => (
+            
+            {/* Filter and Search Bar controls */}
+            <div className="bg-white border border-rose-100/50 p-4 sm:p-5 rounded-xs shadow-3xs space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                
+                {/* Real-time search */}
+                <div className="relative flex-1 max-w-lg">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                    placeholder="Search by client name, phone, booking ID, or service..."
+                    className="w-full pl-9 pr-4 py-2 bg-rose-50/20 border border-rose-100/80 rounded-xs text-xs focus:outline-none focus:border-rose-400 focus:bg-white text-charcoal font-light transition-all"
+                  />
+                </div>
+
+                {/* Filters, sorting and export actions */}
+                <div className="flex flex-wrap items-center gap-3">
+                  
+                  {/* Status filter dropdown */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Status:</span>
+                    <select
+                      value={statusFilter}
+                      onChange={(e: any) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+                      className="px-3 py-1.5 bg-white border border-rose-100 rounded-xs text-xs cursor-pointer text-charcoal font-light"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending Review</option>
+                      <option value="confirmed">Confirmed Only</option>
+                      <option value="completed">Completed Only</option>
+                      <option value="cancelled">Cancelled Only</option>
+                    </select>
+                  </div>
+
+                  {/* Date sorting */}
+                  <button
+                    onClick={() => setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    className="px-3 py-1.5 bg-white border border-rose-100 hover:border-rose-300 text-charcoal rounded-xs text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                    title={`Sort Date: ${sortDirection === 'desc' ? 'Newest First' : 'Oldest First'}`}
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="font-light">Date: {sortDirection === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+                  </button>
+
+                  {/* Export CSV */}
+                  <button
+                    onClick={handleExportCSV}
+                    className="px-4 py-1.5 bg-charcoal hover:bg-rose-500 hover:text-white text-sand-100 rounded-xs text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-3xs"
+                    title="Export filtered records to CSV spreadsheet"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="uppercase tracking-wider font-semibold text-[10px]">Export CSV</span>
+                  </button>
+
+                </div>
+              </div>
+
+              {/* Status breakdown helper summary pills */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-50/50">
+                <span className="text-[9px] uppercase font-bold tracking-widest text-gray-400 py-1">Quick Filters:</span>
+                {(['all', 'pending', 'confirmed', 'completed', 'cancelled'] as const).map((filter) => (
                   <button
                     key={filter}
-                    onClick={() => setStatusFilter(filter)}
-                    className={`px-3 py-1 text-[9px] uppercase font-bold tracking-wider rounded-xs transition-all duration-300 cursor-pointer ${
+                    onClick={() => { setStatusFilter(filter); setCurrentPage(1); }}
+                    className={`px-2.5 py-1 text-[9px] uppercase font-bold tracking-wider rounded-full transition-all cursor-pointer ${
                       statusFilter === filter 
-                        ? 'bg-white text-rose-600 shadow-2xs font-extrabold' 
-                        : 'text-gray-500 hover:text-charcoal hover:bg-white/40'
+                        ? 'bg-rose-500 text-white font-extrabold shadow-3xs' 
+                        : 'bg-rose-50/30 text-gray-500 border border-rose-100/30 hover:border-rose-300'
                     }`}
                   >
-                    {filter}
+                    {filter} ({filter === 'all' ? totalBookings : 
+                              filter === 'pending' ? pendingBookings : 
+                              filter === 'confirmed' ? confirmedBookings : 
+                              filter === 'completed' ? completedBookings : cancelledBookings})
                   </button>
                 ))}
               </div>
             </div>
 
+            {/* Bookings Queue Grid */}
             <div className="space-y-4">
-              {filteredBookings.length === 0 ? (
-                <div className="bg-white border border-dashed border-rose-100 rounded-sm py-16 text-center">
-                  <Calendar className="w-8 h-8 text-rose-200 mx-auto mb-3" />
-                  <p className="text-xs text-gray-400 italic font-light">No appointment requests match this status filter.</p>
+              {paginatedBookings.length === 0 ? (
+                <div className="bg-white border border-dashed border-rose-100 rounded-sm py-20 text-center shadow-3xs">
+                  <Calendar className="w-12 h-12 text-rose-200 mx-auto mb-3" />
+                  <h4 className="title-font text-lg text-charcoal font-medium">No Appointments Found</h4>
+                  <p className="text-xs text-gray-400 max-w-sm mx-auto font-light leading-relaxed mt-1">
+                    No beauty parlour treatment logs match your search term or status criteria. Try clearing search filters.
+                  </p>
+                  {searchTerm && (
+                    <button
+                      onClick={() => { setSearchTerm(''); setStatusFilter('all'); }}
+                      className="mt-4 px-4 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-[10px] uppercase tracking-wider font-bold rounded-xs cursor-pointer"
+                    >
+                      Clear Search & Filters
+                    </button>
+                  )}
                 </div>
               ) : (
-                filteredBookings.map((booking) => (
-                  <div 
-                    key={booking.id} 
-                    className={`bg-white border p-6 shadow-3xs hover:shadow-2xs transition-all duration-300 relative rounded-sm flex flex-col justify-between ${
-                      booking.status === 'confirmed' ? 'border-l-4 border-l-green-500 border-rose-100/50' :
-                      booking.status === 'cancelled' ? 'border-l-4 border-l-red-400 border-rose-100/50' :
-                      'border-l-4 border-l-amber-400 border-rose-100/50'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-serif text-charcoal font-medium text-base">
-                              {booking.customerName}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="admin-bookings-grid">
+                  {paginatedBookings.map((booking) => (
+                    <div 
+                      key={booking.id} 
+                      className={`bg-white border p-6 shadow-3xs hover:shadow-2xs transition-all duration-300 relative rounded-sm flex flex-col justify-between ${
+                        booking.status === 'confirmed' ? 'border-l-4 border-l-blue-500 border-rose-100/50' :
+                        booking.status === 'completed' ? 'border-l-4 border-l-green-500 border-rose-100/50' :
+                        booking.status === 'cancelled' ? 'border-l-4 border-l-red-400 border-rose-100/50' :
+                        'border-l-4 border-l-amber-400 border-rose-100/50'
+                      }`}
+                    >
+                      <div>
+                        {/* Upper Header info */}
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-4">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-serif text-charcoal font-medium text-base">
+                                {booking.customerName}
+                              </span>
+                              <span className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full ${
+                                booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                                booking.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                booking.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                'bg-amber-100 text-amber-800 animate-pulse'
+                              }`}>
+                                {booking.status === 'pending' ? 'Pending Review' : booking.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
+                              <span className="text-rose-600 font-semibold">
+                                💅 {booking.serviceName}
+                              </span>
+                              <span>•</span>
+                              <span className="font-mono text-charcoal font-semibold">₹{booking.price}</span>
+                            </div>
+                          </div>
+                          
+                          <div className="text-left sm:text-right">
+                            <span className="text-[9px] text-gray-400 font-mono block">
+                              ID: {booking.id}
                             </span>
-                            <span className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded-full ${
-                              booking.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                              booking.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                              'bg-amber-100 text-amber-800 animate-pulse'
-                            }`}>
-                              {booking.status}
+                            <span className="text-[9px] text-gray-400 block">
+                              Booked: {new Date(booking.createdAt).toLocaleDateString()}
                             </span>
                           </div>
-                          <p className="text-xs text-rose-600 font-semibold mt-1">
-                            💅 {booking.serviceName}
+                        </div>
+
+                        {/* Customer Info Box */}
+                        <div className="bg-rose-50/20 p-3.5 border border-rose-100/25 flex flex-col gap-2 text-xs text-gray-600 rounded-xs mb-4">
+                          <div className="flex flex-wrap gap-x-4 gap-y-2">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                              Date: <strong className="text-charcoal font-medium">{booking.date}</strong>
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                              Slot: <strong className="text-charcoal font-medium">{booking.time}</strong>
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1.5 border-t border-rose-100/10">
+                            <a href={`tel:${booking.customerPhone}`} className="flex items-center gap-1 hover:text-rose-600 hover:underline">
+                              <Phone className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                              Phone: <strong className="text-charcoal font-medium">{booking.customerPhone}</strong>
+                            </a>
+                            {booking.customerEmail && (
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3.5 h-3.5 text-rose-300 shrink-0" />
+                                Email: <strong className="text-charcoal font-medium">{booking.customerEmail}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Client Notes */}
+                        {booking.notes && (
+                          <p className="text-xs text-gray-400 italic mb-4 p-2 bg-gray-50 border border-gray-100 rounded-xs leading-relaxed">
+                            Client Notes: "{booking.notes}"
                           </p>
-                        </div>
-                        <div className="text-left sm:text-right">
-                          <span className="font-mono text-charcoal font-bold text-sm block">
-                            ₹{booking.price}
-                          </span>
-                          <span className="text-[9px] text-gray-400">
-                            Requested: {new Date(booking.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
+                        )}
                       </div>
 
-                      <div className="bg-rose-50/30 p-3 border border-rose-100/30 flex flex-wrap gap-4 text-xs text-gray-600 rounded-xs mb-4">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5 text-rose-300" />
-                          Date: <strong className="text-charcoal font-medium">{booking.date}</strong>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-rose-300" />
-                          Time Slot: <strong className="text-charcoal font-medium">{booking.time}</strong>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3.5 h-3.5 text-rose-300" />
-                          Phone: <strong className="text-charcoal font-medium">{booking.customerPhone}</strong>
-                        </span>
+                      {/* Interactive Controls & Status updates */}
+                      <div className="flex flex-wrap gap-2 justify-between items-center pt-3 border-t border-rose-100/30 mt-2">
+                        
+                        {/* Edit and Delete Buttons */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleOpenEditModal(booking)}
+                            className="p-1.5 border border-rose-100 hover:border-rose-400 hover:bg-rose-50 text-rose-500 rounded-xs cursor-pointer transition-all"
+                            title="Edit booking parameters"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Are you absolutely sure you want to delete Booking ID: ${booking.id} permanently? This deletes it from the secure database.`)) {
+                                onDeleteBooking(booking.id);
+                              }
+                            }}
+                            className="p-1.5 border border-red-100 hover:border-red-400 hover:bg-red-50 text-red-500 rounded-xs cursor-pointer transition-all"
+                            title="Delete booking completely"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Status Change quick actions */}
+                        <div className="flex gap-1.5">
+                          {booking.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => onUpdateBookingStatus(booking.id, 'cancelled')}
+                                className="px-2.5 py-1.5 border border-red-100 text-red-600 hover:bg-red-50 text-[9px] uppercase font-bold tracking-wider rounded-xs cursor-pointer flex items-center gap-0.5"
+                              >
+                                <X className="w-3 h-3" /> Cancel
+                              </button>
+                              <button
+                                onClick={() => onUpdateBookingStatus(booking.id, 'confirmed')}
+                                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[9px] uppercase font-bold tracking-wider rounded-xs cursor-pointer flex items-center gap-0.5"
+                              >
+                                <Check className="w-3 h-3" /> Confirm
+                              </button>
+                            </>
+                          )}
+
+                          {booking.status === 'confirmed' && (
+                            <>
+                              <button
+                                onClick={() => onUpdateBookingStatus(booking.id, 'cancelled')}
+                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-[9px] uppercase font-bold rounded-xs cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => onUpdateBookingStatus(booking.id, 'completed')}
+                                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-[9px] uppercase font-bold rounded-xs cursor-pointer flex items-center gap-0.5"
+                              >
+                                <CheckCircle className="w-3 h-3" /> Mark Completed
+                              </button>
+                            </>
+                          )}
+
+                          {booking.status === 'completed' && (
+                            <span className="text-[10px] text-green-700 font-extrabold uppercase tracking-wider flex items-center gap-1 pr-1 bg-green-50 px-2 py-1 rounded-xs">
+                              ✓ Completed
+                            </span>
+                          )}
+
+                          {booking.status === 'cancelled' && (
+                            <button
+                              onClick={() => onUpdateBookingStatus(booking.id, 'confirmed')}
+                              className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[9px] uppercase font-bold rounded-xs cursor-pointer"
+                            >
+                              Re-Confirm Slot
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      
-                      {booking.notes && (
-                        <p className="text-xs text-gray-400 italic mb-4 p-2 bg-gray-50 border border-gray-100 rounded-xs">
-                          Notes: "{booking.notes}"
-                        </p>
-                      )}
                     </div>
-
-                    <div className="flex gap-2 justify-end pt-3 border-t border-rose-100/30 mt-2">
-                      {booking.status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => onUpdateBookingStatus(booking.id, 'cancelled')}
-                            className="px-3 py-1.5 border border-red-100 text-red-600 hover:bg-red-50 text-[10px] uppercase font-bold tracking-wider rounded-xs cursor-pointer flex items-center gap-1"
-                          >
-                            <X className="w-3 h-3" /> Reject
-                          </button>
-                          <button
-                            onClick={() => onUpdateBookingStatus(booking.id, 'confirmed')}
-                            className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-[10px] uppercase font-bold tracking-wider rounded-xs cursor-pointer flex items-center gap-1"
-                          >
-                            <Check className="w-3 h-3" /> Confirm Slot
-                          </button>
-                        </>
-                      )}
-
-                      {booking.status === 'confirmed' && (
-                        <button
-                          onClick={() => onUpdateBookingStatus(booking.id, 'cancelled')}
-                          className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 text-[10px] uppercase font-bold rounded-xs cursor-pointer"
-                        >
-                          Cancel Appointment
-                        </button>
-                      )}
-
-                      {booking.status === 'cancelled' && (
-                        <button
-                          onClick={() => onUpdateBookingStatus(booking.id, 'confirmed')}
-                          className="px-3 py-1 bg-green-50 text-green-700 hover:bg-green-100 text-[10px] uppercase font-bold rounded-xs cursor-pointer"
-                        >
-                          Re-confirm
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-rose-100/30 pt-6 mt-4">
+                <p className="text-xs text-gray-500 font-light">
+                  Showing <strong className="font-semibold text-charcoal">{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong className="font-semibold text-charcoal">{Math.min(currentPage * itemsPerPage, filteredAndSortedBookings.length)}</strong> of <strong className="font-semibold text-charcoal">{filteredAndSortedBookings.length}</strong> matching appointments
+                </p>
+
+                <div className="flex gap-2">
+                  <button
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    className="p-2 border border-rose-100 hover:border-rose-300 disabled:opacity-30 disabled:pointer-events-none text-charcoal rounded-xs cursor-pointer transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  {Array.from({ length: totalPages }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentPage(idx + 1)}
+                      className={`w-8 h-8 rounded-xs text-xs font-bold transition-all cursor-pointer ${
+                        currentPage === idx + 1 
+                          ? 'bg-rose-500 text-white shadow-3xs' 
+                          : 'bg-white text-gray-600 border border-rose-100 hover:border-rose-300'
+                      }`}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                  <button
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    className="p-2 border border-rose-100 hover:border-rose-300 disabled:opacity-30 disabled:pointer-events-none text-charcoal rounded-xs cursor-pointer transition-all"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
@@ -767,7 +1116,7 @@ export default function AdminPanel({
                         onClick={() => onDeleteReview(review.id)}
                         className="px-3 py-1.5 border border-red-100 text-red-600 hover:bg-red-50 text-[10px] font-bold uppercase rounded-xs cursor-pointer flex items-center gap-1 hover:scale-105 mr-auto"
                       >
-                        <Trash2 className="w-3 h-3" /> Delete
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
                       </button>
 
                       {review.approved ? (
@@ -775,7 +1124,7 @@ export default function AdminPanel({
                           onClick={() => onToggleReviewApproval(review.id, false)}
                           className="px-3 py-1.5 border border-amber-200 text-amber-700 hover:bg-amber-50 text-[10px] font-bold uppercase rounded-xs cursor-pointer flex items-center gap-1 hover:scale-105"
                         >
-                          <X className="w-3 h-3" /> Hide from Home
+                          <X className="w-3.5 h-3.5" /> Hide from Home
                         </button>
                       ) : (
                         <button
@@ -869,6 +1218,176 @@ export default function AdminPanel({
         )}
 
       </div>
+
+      {/* EDIT BOOKING MODAL */}
+      {isEditModalOpen && editingBooking && (
+        <div className="fixed inset-0 bg-charcoal/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-sand-100 w-full max-w-lg rounded-xs shadow-xl overflow-hidden relative flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-sand-100 flex justify-between items-center bg-sand-50">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 bg-rose-100 text-rose-600 rounded-xs">
+                  <Edit3 className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="title-font text-sm font-bold uppercase tracking-wider text-charcoal">
+                    Edit Appointment Parameters
+                  </h3>
+                  <span className="text-[9px] font-mono text-gray-400 block mt-0.5">Booking ID: {editingBooking.id}</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setIsEditModalOpen(false); setEditingBooking(null); }}
+                className="text-gray-400 hover:text-charcoal cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditModalSubmit} className="p-6 overflow-y-auto space-y-4">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                  Customer Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editFormName}
+                  onChange={(e) => setEditFormName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs text-charcoal font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormPhone}
+                    onChange={(e) => setEditFormPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={editFormEmail}
+                    onChange={(e) => setEditFormEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs font-light"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Selected Service
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormServiceName}
+                    onChange={(e) => setEditFormServiceName(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs text-charcoal"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Price (INR)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editFormPrice}
+                    onChange={(e) => setEditFormPrice(e.target.value)}
+                    min="0"
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs font-mono text-charcoal font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Booking Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editFormDate}
+                    onChange={(e) => setEditFormDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Time Slot
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormTime}
+                    onChange={(e) => setEditFormTime(e.target.value)}
+                    placeholder="e.g. 10:30 AM"
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={editFormStatus}
+                    onChange={(e: any) => setEditFormStatus(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs cursor-pointer text-charcoal"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+                  Client Notes / Demands
+                </label>
+                <textarea
+                  value={editFormNotes}
+                  onChange={(e) => setEditFormNotes(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 bg-white border border-rose-100 focus:outline-none focus:border-rose-400 rounded-xs text-xs text-gray-600 font-light"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-rose-100/20">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditModalOpen(false); setEditingBooking(null); }}
+                  className="px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-500 text-xs font-bold uppercase rounded-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold uppercase rounded-xs cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5" /> Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

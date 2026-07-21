@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, Review, Service, AdminSettings } from './types';
 import { storage } from './lib/storage';
-import { supabase, saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors, saveReviewToSupabase, fetchReviewsFromSupabase, updateReviewApprovalInSupabase, deleteReviewFromSupabase, fetchServicesFromSupabase, saveServiceToSupabase, updateServiceInSupabase, deleteServiceFromSupabase, lastSupabaseError } from './lib/supabase';
+import { supabase, saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, updateBookingInSupabase, deleteBookingFromSupabase, subscribeToSupabaseErrors, saveReviewToSupabase, fetchReviewsFromSupabase, updateReviewApprovalInSupabase, deleteReviewFromSupabase, fetchServicesFromSupabase, saveServiceToSupabase, updateServiceInSupabase, deleteServiceFromSupabase, lastSupabaseError } from './lib/supabase';
 
 // Import our modular components
 import Navbar from './components/Navbar';
@@ -165,8 +165,10 @@ export default function App() {
     };
   }, []);
 
-  // Securely fetch bookings from Supabase whenever active user changes
+  // Securely fetch bookings from Supabase whenever active user changes & set up realtime updates
   useEffect(() => {
+    let channel: any = null;
+
     const syncBookings = async () => {
       const userId = currentUser?.id;
       const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'staff';
@@ -177,7 +179,31 @@ export default function App() {
         storage.saveBookings(dbBookings);
       }
     };
+
     syncBookings();
+
+    // Subscribe to real-time changes on the bookings table
+    channel = supabase
+      .channel('bookings-realtime-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings'
+        },
+        async (payload) => {
+          console.log('Real-time database payload received:', payload);
+          await syncBookings();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [currentUser]);
 
   // Subscribe to Supabase connection and query errors
@@ -191,7 +217,7 @@ export default function App() {
   }, []);
 
   // Update localStorage helper wrappers
-  const handleUpdateBookingStatus = async (bookingId: string, newStatus: 'confirmed' | 'cancelled') => {
+  const handleUpdateBookingStatus = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'cancelled' | 'completed') => {
     const updated = bookings.map(b => {
       if (b.id === bookingId) {
         return { ...b, status: newStatus };
@@ -203,6 +229,29 @@ export default function App() {
 
     // Also update on Supabase backend
     await updateBookingStatusInSupabase(bookingId, newStatus);
+  };
+
+  const handleUpdateBooking = async (bookingId: string, updatedFields: Partial<Booking>) => {
+    const updated = bookings.map(b => {
+      if (b.id === bookingId) {
+        return { ...b, ...updatedFields };
+      }
+      return b;
+    });
+    setBookings(updated);
+    storage.saveBookings(updated);
+
+    // Sync with Supabase
+    await updateBookingInSupabase(bookingId, updatedFields);
+  };
+
+  const handleDeleteBooking = async (bookingId: string) => {
+    const updated = bookings.filter(b => b.id !== bookingId);
+    setBookings(updated);
+    storage.saveBookings(updated);
+
+    // Sync with Supabase
+    await deleteBookingFromSupabase(bookingId);
   };
 
   const handleApproveReview = async (reviewId: string) => {
@@ -676,74 +725,182 @@ export default function App() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="customer-bookings-list">
                   {myBookings.map((booking) => (
-                    <div key={booking.id} className="bg-white border border-sand-100 p-6 shadow-2xs hover:shadow-xs transition-shadow relative rounded-xs">
+                    <div key={booking.id} className="bg-white border border-sand-100 p-6 shadow-2xs hover:shadow-xs transition-shadow relative rounded-xs flex flex-col justify-between">
                       
-                      <div className="flex justify-between items-start gap-4 mb-4">
-                        <div>
-                          <span className={`px-2 py-0.5 text-[9px] uppercase font-bold tracking-wider rounded-xs inline-block mb-2 ${
-                            booking.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                            booking.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                            'bg-amber-100 text-amber-800 animate-pulse'
-                          }`}>
-                            {booking.status === 'pending' ? 'Awaiting Admin Review' : booking.status}
-                          </span>
+                      <div>
+                        {/* Upper Section with status badge & price */}
+                        <div className="flex justify-between items-start gap-4 mb-4">
+                          <div>
+                            <span className={`px-2 py-0.5 text-[9px] uppercase font-bold tracking-wider rounded-xs inline-block mb-2 ${
+                              booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                              booking.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              booking.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                              'bg-amber-100 text-amber-800 animate-pulse'
+                            }`}>
+                              {booking.status === 'pending' ? 'Awaiting Review' : booking.status}
+                            </span>
+                            
+                            <h4 className="font-serif text-lg text-charcoal font-medium">
+                              {booking.serviceName}
+                            </h4>
+                          </div>
                           
-                          <h4 className="font-serif text-lg text-charcoal font-medium">
-                            {booking.serviceName}
-                          </h4>
+                          <div className="text-right">
+                            <span className="font-mono text-sm font-bold text-charcoal block">
+                              ₹{(booking.price || 0).toFixed(2)}
+                            </span>
+                            <span className="text-[9px] text-gray-400 font-mono block mt-1">ID: {booking.id}</span>
+                          </div>
                         </div>
-                        
-                        <span className="font-mono text-sm font-bold text-charcoal">
-                          ₹{booking.price.toFixed(2)}
-                        </span>
+
+                        {/* Interactive status progress steps timeline */}
+                        <div className="mb-5 py-3 border-t border-b border-sand-50">
+                          <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-2.5">
+                            <span>Workflow Status</span>
+                            <span className="font-mono text-[8px] font-normal text-gray-400">Created: {new Date(booking.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          
+                          <div className="relative flex items-center justify-between">
+                            {/* Background Line */}
+                            <div className="absolute left-0 right-0 top-1/2 h-0.5 bg-gray-100 -translate-y-1/2 z-0" />
+                            {/* Color-coded Active Fill Line */}
+                            <div 
+                              className={`absolute left-0 top-1/2 h-0.5 -translate-y-1/2 z-0 transition-all duration-500 ${
+                                booking.status === 'completed' ? 'w-full bg-green-500' :
+                                booking.status === 'confirmed' ? 'w-1/2 bg-blue-500' :
+                                booking.status === 'cancelled' ? 'w-full bg-red-400' : 'w-1/6 bg-amber-400'
+                              }`} 
+                            />
+
+                            {/* Step 1: Requested */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                booking.status === 'cancelled'
+                                  ? 'bg-red-100 text-red-600'
+                                  : 'bg-amber-500 text-white'
+                              }`}>
+                                1
+                              </span>
+                              <span className="text-[8px] font-bold uppercase tracking-wide mt-1 text-charcoal">Requested</span>
+                            </div>
+
+                            {/* Step 2: Confirmed */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors duration-300 ${
+                                booking.status === 'confirmed' || booking.status === 'completed'
+                                  ? 'bg-blue-500 text-white'
+                                  : booking.status === 'cancelled'
+                                  ? 'bg-gray-100 text-gray-400'
+                                  : 'bg-white border border-gray-200 text-gray-400'
+                              }`}>
+                                2
+                              </span>
+                              <span className={`text-[8px] font-bold uppercase tracking-wide mt-1 ${
+                                booking.status === 'confirmed' || booking.status === 'completed' ? 'text-blue-600' : 'text-gray-400'
+                              }`}>Confirmed</span>
+                            </div>
+
+                            {/* Step 3: Completed / Cancelled */}
+                            <div className="relative z-10 flex flex-col items-center">
+                              {booking.status === 'cancelled' ? (
+                                <>
+                                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-red-500 text-white">
+                                    ✗
+                                  </span>
+                                  <span className="text-[8px] font-bold uppercase tracking-wide mt-1 text-red-600">Cancelled</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors duration-300 ${
+                                    booking.status === 'completed'
+                                      ? 'bg-green-500 text-white'
+                                      : 'bg-white border border-gray-200 text-gray-400'
+                                  }`}>
+                                    3
+                                  </span>
+                                  <span className={`text-[8px] font-bold uppercase tracking-wide mt-1 ${
+                                    booking.status === 'completed' ? 'text-green-600' : 'text-gray-400'
+                                  }`}>Completed</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Date and Time slots details */}
+                        <div className="space-y-2 text-xs text-gray-600 font-light py-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 text-rose-300" />
+                            <span>Scheduled Date: <strong className="text-charcoal font-medium">{booking.date}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5 text-rose-300" />
+                            <span>Reserved Time: <strong className="text-charcoal font-medium">{booking.time}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1 border-t border-dashed border-sand-50 mt-1">
+                            <span className="text-[10px] text-gray-400">Guest Name: <strong className="text-charcoal font-normal">{booking.customerName} ({booking.customerPhone})</strong></span>
+                          </div>
+                        </div>
+
+                        {booking.notes && (
+                          <div className="text-xs text-gray-400 italic mt-3 p-2 bg-rose-50/10 border border-rose-100/10 rounded-xs">
+                            Notes: "{booking.notes}"
+                          </div>
+                        )}
                       </div>
 
-                      <div className="space-y-2 text-xs text-gray-600 font-light border-t border-b border-sand-50 py-3 my-4">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-3.5 h-3.5 text-sand-200" />
-                          <span>Date: <strong className="text-charcoal font-medium">{booking.date}</strong></span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-sand-200" />
-                          <span>Time slot: <strong className="text-charcoal font-medium">{booking.time}</strong></span>
-                        </div>
-                        <div className="flex items-center gap-2 pt-1 border-t border-dashed border-sand-50 mt-1">
-                          <span className="text-[10px] text-gray-400">Guest: <strong className="text-charcoal font-normal">{booking.customerName} ({booking.customerPhone})</strong></span>
-                        </div>
+                      {/* Status specific footer messages & Cancel request button */}
+                      <div className="mt-4 pt-3 border-t border-sand-50">
+                        {booking.status === 'pending' && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                              Awaiting salon administrator approval
+                            </span>
+                            <button
+                              onClick={() => {
+                                if (confirm("Are you sure you want to cancel this appointment request?")) {
+                                  handleUpdateBookingStatus(booking.id, 'cancelled');
+                                }
+                              }}
+                              className="text-xs text-red-500 hover:text-red-700 underline font-semibold uppercase tracking-wider cursor-pointer"
+                            >
+                              Cancel Request
+                            </button>
+                          </div>
+                        )}
+
+                        {booking.status === 'confirmed' && (
+                          <div className="flex justify-between items-center flex-wrap gap-2">
+                            <div className="text-[10px] text-blue-700 font-bold uppercase tracking-wider bg-blue-50/50 px-2.5 py-1.5 border border-blue-100 rounded-xs flex items-center gap-1.5 flex-1">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                              Active booking is locked in. See you soon!
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (confirm("Are you sure you want to cancel this confirmed appointment?")) {
+                                  handleUpdateBookingStatus(booking.id, 'cancelled');
+                                }
+                              }}
+                              className="text-[10px] text-red-400 hover:text-red-600 font-semibold uppercase tracking-wider cursor-pointer ml-auto"
+                            >
+                              Cancel Appointment
+                            </button>
+                          </div>
+                        )}
+
+                        {booking.status === 'completed' && (
+                          <div className="text-[10px] text-green-700 font-bold uppercase tracking-wider bg-green-50/50 p-2 border border-green-100 rounded-xs flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-green-600" />
+                            Completed. Thank you for choosing Trisha Beauty Parlour!
+                          </div>
+                        )}
+
+                        {booking.status === 'cancelled' && (
+                          <div className="text-[10px] text-red-700 font-bold uppercase tracking-wider bg-red-50/50 p-2 border border-red-100 rounded-xs">
+                            This appointment has been cancelled. Feel free to schedule a new treatment!
+                          </div>
+                        )}
                       </div>
-
-                      {booking.notes && (
-                        <p className="text-xs text-gray-400 italic mb-4">
-                          Notes: "{booking.notes}"
-                        </p>
-                      )}
-
-                      {booking.status === 'pending' && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                            Our team will call/confirm shortly
-                          </span>
-                          <button
-                            onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')}
-                            className="text-xs text-red-500 hover:text-red-700 underline font-semibold uppercase tracking-wider cursor-pointer"
-                          >
-                            Cancel Request
-                          </button>
-                        </div>
-                      )}
-
-                      {booking.status === 'confirmed' && (
-                        <div className="text-[10px] text-green-700 font-bold uppercase tracking-wider bg-green-50/50 p-2 border border-green-100 rounded-xs flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-green-600 animate-pulse" />
-                          Your slot is locked in. We look forward to pampering you!
-                        </div>
-                      )}
-
-                      {booking.status === 'cancelled' && (
-                        <div className="text-[10px] text-red-700 font-bold uppercase tracking-wider bg-red-50/50 p-2 border border-red-100 rounded-xs">
-                          This request has been cancelled or rescheduled.
-                        </div>
-                      )}
 
                     </div>
                   ))}
@@ -764,6 +921,8 @@ export default function App() {
                 adminSettings={adminSettings}
                 currentUser={currentUser}
                 onUpdateBookingStatus={handleUpdateBookingStatus}
+                onUpdateBooking={handleUpdateBooking}
+                onDeleteBooking={handleDeleteBooking}
                 onApproveReview={handleApproveReview}
                 onToggleReviewApproval={handleToggleReviewApproval}
                 onDeleteReview={handleDeleteReview}
