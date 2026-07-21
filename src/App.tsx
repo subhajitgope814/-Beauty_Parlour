@@ -1131,10 +1131,10 @@ create table if not exists bookings (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Enable Row Level Security (RLS)
+-- 2. Enable Row Level Security (RLS) on bookings
 alter table bookings enable row level security;
 
--- 3. Create RLS policies for strict privacy mapping
+-- 3. Create RLS policies for bookings
 create policy "Allow select for owner or admin" on bookings
 for select
 using (
@@ -1159,6 +1159,36 @@ create policy "Allow delete for admin only" on bookings
 for delete
 using (
   (auth.jwt() ->> 'email') = 'trisha123@gmail.com'
+);
+
+-- 4. Create the user_profiles table
+create table if not exists user_profiles (
+  id uuid references auth.users(id) primary key,
+  full_name text not null,
+  email text not null,
+  phone text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 5. Enable Row Level Security (RLS) on user_profiles
+alter table user_profiles enable row level security;
+
+-- 6. Create RLS policies for user_profiles
+create policy "Allow public insert for signup" on user_profiles
+for insert
+with check (true);
+
+create policy "Allow select for owner or admin" on user_profiles
+for select
+using (
+  auth.uid() = id
+  OR (auth.jwt() ->> 'email') = 'trisha123@gmail.com'
+);
+
+create policy "Allow update for owner" on user_profiles
+for update
+using (
+  auth.uid() = id
 );`;
 
                       navigator.clipboard.writeText(sqlText);
@@ -1201,10 +1231,10 @@ create table if not exists bookings (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 2. Enable Row Level Security (RLS)
+-- 2. Enable Row Level Security (RLS) on bookings
 alter table bookings enable row level security;
 
--- 3. Create RLS policies for strict privacy mapping
+-- 3. Create RLS policies for bookings
 create policy "Allow select for owner or admin" on bookings
 for select
 using (
@@ -1229,6 +1259,36 @@ create policy "Allow delete for admin only" on bookings
 for delete
 using (
   (auth.jwt() ->> 'email') = 'trisha123@gmail.com'
+);
+
+-- 4. Create the user_profiles table
+create table if not exists user_profiles (
+  id uuid references auth.users(id) primary key,
+  full_name text not null,
+  email text not null,
+  phone text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 5. Enable Row Level Security (RLS) on user_profiles
+alter table user_profiles enable row level security;
+
+-- 6. Create RLS policies for user_profiles
+create policy "Allow public insert for signup" on user_profiles
+for insert
+with check (true);
+
+create policy "Allow select for owner or admin" on user_profiles
+for select
+using (
+  auth.uid() = id
+  OR (auth.jwt() ->> 'email') = 'trisha123@gmail.com'
+);
+
+create policy "Allow update for owner" on user_profiles
+for update
+using (
+  auth.uid() = id
 );`}
                 </pre>
               </div>

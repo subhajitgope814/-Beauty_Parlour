@@ -106,24 +106,96 @@ export default function AuthModal({
     }
   };
 
+  const getFriendlyErrorMessage = (error: any): string => {
+    if (!error) return 'An unknown error occurred.';
+    
+    let msg = '';
+    if (typeof error === 'string') {
+      msg = error;
+    } else if (error.message) {
+      msg = error.message;
+    } else {
+      try {
+        msg = JSON.stringify(error);
+      } catch (e) {
+        msg = error.toString() || '';
+      }
+    }
+
+    const lowerMsg = msg.toLowerCase();
+    
+    if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('network error') || lowerMsg.includes('load failed')) {
+      return 'Network connection error. Please verify you are connected to the internet and that your ad-blocker is not blocking Supabase.';
+    }
+    
+    if (lowerMsg.includes('user already exists') || lowerMsg.includes('already registered')) {
+      return 'An account with this email address is already registered. Please sign in instead.';
+    }
+    
+    if (lowerMsg.includes('weak_password') || lowerMsg.includes('should be at least') || lowerMsg.includes('password should')) {
+      return 'Your password is too weak. Please ensure it is at least 6 characters long.';
+    }
+    
+    if (lowerMsg.includes('invalid email') || lowerMsg.includes('invalid format')) {
+      return 'Please enter a valid email address.';
+    }
+
+    if (lowerMsg.includes('rate limit') || lowerMsg.includes('too many requests')) {
+      return 'For security, we are experiencing rate limits. Please wait a few moments and try again.';
+    }
+
+    if (lowerMsg.includes('user_profiles') || lowerMsg.includes('relation "user_profiles" does not exist')) {
+      return 'Account registered, but user profile table is missing. Running SQL Schema setup is recommended.';
+    }
+    
+    if (msg === '{}' || !msg) {
+      return 'An unexpected database error occurred. Please verify your connection or contact support.';
+    }
+    
+    return msg;
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setInfoMsg('');
     setIsLoading(true);
 
+    // Precise input field validation
     if (!name.trim()) {
-      setErrorMsg('Please specify your name.');
+      setErrorMsg('Full Name is required.');
       setIsLoading(false);
       return;
     }
-    if (!email.trim() || !password) {
-      setErrorMsg('Email and secure password are required.');
+    
+    if (!email.trim()) {
+      setErrorMsg('Email Address is required.');
       setIsLoading(false);
       return;
     }
+
+    // Simple email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setErrorMsg('Please enter a valid email address.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!phone.trim()) {
+      setErrorMsg('Contact Phone is required.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (!password) {
+      setErrorMsg('Password is required.');
+      setIsLoading(false);
+      return;
+    }
+
     if (password.length < 6) {
-      setErrorMsg('Password should be at least 6 characters long.');
+      setErrorMsg('Password must be at least 6 characters long.');
       setIsLoading(false);
       return;
     }
@@ -131,24 +203,43 @@ export default function AuthModal({
     const cleanEmail = email.trim().toLowerCase();
 
     try {
+      // 1. Create the user in Supabase Authentication
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password: password,
         options: {
           data: {
             name: name.trim(),
-            phone: phone.trim() || ''
+            phone: phone.trim()
           }
         }
       });
 
       if (error) {
-        setErrorMsg(error.message);
+        setErrorMsg(getFriendlyErrorMessage(error));
         setIsLoading(false);
         return;
       }
 
       if (data.user) {
+        // 2. Create a profile in the user_profiles table on Supabase
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .insert([
+            {
+              id: data.user.id,
+              full_name: name.trim(),
+              email: cleanEmail,
+              phone: phone.trim(),
+              created_at: new Date().toISOString()
+            }
+          ]);
+
+        if (profileError) {
+          console.warn('Profile creation returned an error:', profileError);
+          // If profile table doesn't exist yet, we still proceed but log a warning to ensure local fallback is active.
+        }
+
         const role = cleanEmail === 'trisha123@gmail.com' ? 'admin' : 'customer';
         const newUser: User = {
           id: data.user.id,
@@ -158,11 +249,19 @@ export default function AuthModal({
           role: role,
           phone: phone.trim() || undefined
         };
-        onRegisterSuccess(newUser);
-        onClose();
+
+        setInfoMsg('Account created successfully! Welcome to Trisha Beauty Parlour.');
+        
+        // Auto-signin and redirect
+        setTimeout(() => {
+          onRegisterSuccess(newUser);
+          onClose();
+        }, 1500);
+      } else {
+        setErrorMsg('User object could not be resolved from Supabase Auth response.');
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred during registration.');
+      setErrorMsg(getFriendlyErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -342,9 +441,17 @@ export default function AuthModal({
               <button
                 type="submit"
                 id="login-submit-btn"
-                className="w-full py-3 bg-charcoal hover:bg-charcoal/90 text-white text-xs uppercase tracking-widest font-bold transition-all rounded-xs cursor-pointer shadow-xs"
+                disabled={isLoading}
+                className="w-full py-3 bg-charcoal hover:bg-charcoal/90 disabled:bg-charcoal/70 disabled:cursor-not-allowed text-white text-xs uppercase tracking-widest font-bold transition-all rounded-xs cursor-pointer shadow-xs flex items-center justify-center gap-2"
               >
-                Sign In securely
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  <span>Sign In securely</span>
+                )}
               </button>
 
               <div className="mt-6 text-center text-xs text-gray-500 pt-4 border-t border-sand-100">
@@ -406,7 +513,7 @@ export default function AuthModal({
 
               <div className="space-y-1">
                 <label className="block text-[10px] uppercase tracking-widest font-bold text-gray-500">
-                  Contact Phone (Optional)
+                  Contact Phone (Required)
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
@@ -419,6 +526,7 @@ export default function AuthModal({
                     onChange={(e) => setPhone(e.target.value)}
                     id="register-phone-input"
                     className="w-full pl-10 pr-3 py-2.5 bg-sand-50 border border-sand-100 rounded-xs text-xs text-charcoal focus:outline-none focus:border-sand-200"
+                    required
                   />
                 </div>
               </div>
@@ -446,9 +554,17 @@ export default function AuthModal({
               <button
                 type="submit"
                 id="register-submit-btn"
-                className="w-full py-3 bg-charcoal hover:bg-charcoal/90 text-white text-xs uppercase tracking-widest font-bold transition-all rounded-xs cursor-pointer shadow-xs"
+                disabled={isLoading}
+                className="w-full py-3 bg-charcoal hover:bg-charcoal/90 disabled:bg-charcoal/70 disabled:cursor-not-allowed text-white text-xs uppercase tracking-widest font-bold transition-all rounded-xs cursor-pointer shadow-xs flex items-center justify-center gap-2"
               >
-                Register Account
+                {isLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Creating Account...</span>
+                  </>
+                ) : (
+                  <span>Register Account</span>
+                )}
               </button>
 
               <div className="mt-6 text-center text-xs text-gray-500 pt-4 border-t border-sand-100">
