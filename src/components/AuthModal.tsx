@@ -87,6 +87,7 @@ export default function AuthModal({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setErrorMsg('');
     setInfoMsg('');
     setIsLoading(true);
@@ -265,7 +266,7 @@ export default function AuthModal({
     }
 
     if (lowerMsg.includes('rate limit') || lowerMsg.includes('too many requests') || lowerMsg.includes('429')) {
-      return 'For security, we are experiencing rate limits. Please wait a few moments and try again.';
+      return 'Too many signup attempts. Please wait a few minutes and try again.';
     }
 
     if (lowerMsg.includes('user_profiles') || lowerMsg.includes('relation "user_profiles" does not exist')) {
@@ -277,6 +278,7 @@ export default function AuthModal({
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setErrorMsg('');
     setInfoMsg('');
     setIsLoading(true);
@@ -401,6 +403,10 @@ export default function AuthModal({
           role: role,
           phone: phone.trim() || undefined
         };
+
+        // Save to local storage for consistent offline fallback
+        const updatedUsers = [...allUsers, newUser];
+        storage.saveUsers(updatedUsers);
 
         setInfoMsg('Account created successfully! Welcome to Trisha Beauty Parlour.');
         
