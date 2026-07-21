@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { X, Lock, Mail, User as UserIcon, Phone, ShieldCheck, Key, RefreshCw, AlertCircle } from 'lucide-react';
 import { storage } from '../lib/storage';
+import { supabase } from '../lib/supabase';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ export default function AuthModal({
   // Status/Error messages
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Reset states when mode changes or modal opens
   useEffect(() => {
@@ -53,97 +55,145 @@ export default function AuthModal({
     setRecoveryCodeInput('');
     setNewPassword('');
     setRecoveryUser(null);
+    setIsLoading(false);
   }, [initialMode, isOpen]);
 
   if (!isOpen) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setInfoMsg('');
+    setIsLoading(true);
 
     if (!email || !password) {
       setErrorMsg('Please enter both email and password.');
+      setIsLoading(false);
       return;
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user = allUsers.find(u => u.email.toLowerCase() === cleanEmail);
 
-    if (!user) {
-      setErrorMsg('No account found with this email. Please check spelling or register.');
-      return;
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        const role = cleanEmail === 'trisha123@gmail.com' ? 'admin' : 'customer';
+        const userObj: User = {
+          id: data.user.id,
+          email: cleanEmail,
+          passwordHash: password, // preserved for backcompat
+          name: data.user.user_metadata?.name || cleanEmail.split('@')[0] || 'Customer',
+          role: role,
+          phone: data.user.user_metadata?.phone || undefined
+        };
+        onLoginSuccess(userObj);
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred during login.');
+    } finally {
+      setIsLoading(false);
     }
-
-    if (user.passwordHash !== password) {
-      setErrorMsg('Incorrect password. Please try again or use "Forgot Password".');
-      return;
-    }
-
-    // Success login!
-    onLoginSuccess(user);
-    onClose();
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setInfoMsg('');
+    setIsLoading(true);
 
     if (!name.trim()) {
       setErrorMsg('Please specify your name.');
+      setIsLoading(false);
       return;
     }
     if (!email.trim() || !password) {
       setErrorMsg('Email and secure password are required.');
+      setIsLoading(false);
       return;
     }
     if (password.length < 6) {
       setErrorMsg('Password should be at least 6 characters long.');
+      setIsLoading(false);
       return;
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const exists = allUsers.some(u => u.email.toLowerCase() === cleanEmail);
-    if (exists) {
-      setErrorMsg('An account with this email address already exists. Please login instead.');
-      return;
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: password,
+        options: {
+          data: {
+            name: name.trim(),
+            phone: phone.trim() || ''
+          }
+        }
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        const role = cleanEmail === 'trisha123@gmail.com' ? 'admin' : 'customer';
+        const newUser: User = {
+          id: data.user.id,
+          email: cleanEmail,
+          passwordHash: password,
+          name: name.trim(),
+          role: role,
+          phone: phone.trim() || undefined
+        };
+        onRegisterSuccess(newUser);
+        onClose();
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred during registration.');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Create Customer User
-    const newUser: User = {
-      id: 'u-' + Date.now(),
-      email: cleanEmail,
-      passwordHash: password, // Simulated secure hash
-      name: name.trim(),
-      role: 'customer',
-      phone: phone.trim() || undefined
-    };
-
-    onRegisterSuccess(newUser);
-    onClose();
   };
 
   // Step 1: Request Password Recovery code
-  const handleRequestCode = (e: React.FormEvent) => {
+  const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setInfoMsg('');
+    setIsLoading(true);
 
     const cleanEmail = recoveryEmail.trim().toLowerCase();
-    const user = allUsers.find(u => u.email.toLowerCase() === cleanEmail);
 
-    if (!user) {
-      setErrorMsg('No account matches this email address.');
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/#reset-password`,
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      setInfoMsg('A secure password reset link has been dispatched to your email address by Supabase Auth!');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred during reset request.');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Generate simulated random 6-digit code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedCode(code);
-    setRecoveryUser(user);
-    setMode('reset-flow');
-    setInfoMsg(`A verification code has been dispatched simulation-style!`);
   };
 
   // Step 2: Confirm Code and Reset Password

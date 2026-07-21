@@ -13,7 +13,8 @@ import {
   Sparkles, 
   ShoppingBag, 
   Search,
-  Check
+  Check,
+  Lock
 } from 'lucide-react';
 
 interface BookingFormProps {
@@ -34,6 +35,7 @@ interface BookingFormProps {
   selectedServices: Service[];
   onToggleService: (service: Service) => void;
   onClearServices: () => void;
+  onOpenAuth?: (mode?: 'login' | 'register') => void;
 }
 
 const getTodayString = () => {
@@ -51,7 +53,8 @@ export default function BookingForm({
   existingBookings,
   selectedServices,
   onToggleService,
-  onClearServices
+  onClearServices,
+  onOpenAuth
 }: BookingFormProps) {
   // Booking Form State
   const [bookingDate, setBookingDate] = useState(getTodayString());
@@ -237,6 +240,34 @@ export default function BookingForm({
           >
             Schedule Another Appointment
           </button>
+        </div>
+      ) : !currentUser ? (
+        <div className="text-center py-12 animate-fade-in border border-dashed border-rose-100 p-8 sm:p-12 rounded-sm bg-white" id="booking-login-wall">
+          <div className="w-16 h-16 bg-rose-50 border border-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="w-8 h-8 stroke-[1.5]" />
+          </div>
+          <h3 className="title-font text-2xl font-light text-charcoal mb-3">
+            Secure Account Required
+          </h3>
+          <p className="text-xs sm:text-sm text-gray-500 max-w-md mx-auto mb-8 font-light leading-relaxed">
+            To book and privately manage your salon appointments, Trisha Beauty Parlour requires a secure, logged-in customer account. Please sign in or register to schedule your beauty experience!
+          </p>
+          <div className="flex justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => onOpenAuth?.('login')}
+              className="px-6 py-2.5 bg-charcoal text-white hover:bg-rose-500 hover:scale-105 hover:shadow-xs transition-all text-xs font-bold uppercase tracking-widest rounded-xs cursor-pointer"
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenAuth?.('register')}
+              className="px-6 py-2.5 border border-sand-100 text-gray-600 hover:border-rose-400 hover:text-rose-500 transition-all text-xs font-bold uppercase tracking-widest rounded-xs cursor-pointer"
+            >
+              Create Account
+            </button>
+          </div>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-8" id="booking-input-form">

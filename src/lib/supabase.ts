@@ -39,26 +39,30 @@ function setLastSupabaseError(err: any) {
  */
 export async function saveBookingToSupabase(booking: Booking): Promise<{ success: boolean; error: any }> {
   try {
-    // Standardize object for Supabase insertion using standard PostgreSQL snake_case column names
+    // Standardize object for Supabase insertion using standard PostgreSQL snake_case column names.
+    // We insert BOTH the new columns (user_id, booking_date, booking_time) and legacy ones for total fallback safety.
+    const payload: any = {
+      id: booking.id,
+      user_id: booking.customerId, // Map to auth.uid()
+      customer_id: booking.customerId,
+      customer_name: booking.customerName,
+      customer_email: booking.customerEmail,
+      customer_phone: booking.customerPhone,
+      service_id: booking.serviceId,
+      service_name: booking.serviceName,
+      booking_date: booking.date, // Map to booking_date
+      booking_time: booking.time, // Map to booking_time
+      date: booking.date,
+      time: booking.time,
+      status: booking.status,
+      notes: booking.notes || '',
+      price: booking.price,
+      created_at: booking.createdAt
+    };
+
     const { error } = await supabase
       .from('bookings')
-      .insert([
-        {
-          id: booking.id,
-          customer_id: booking.customerId,
-          customer_name: booking.customerName,
-          customer_email: booking.customerEmail,
-          customer_phone: booking.customerPhone,
-          service_id: booking.serviceId,
-          service_name: booking.serviceName,
-          date: booking.date,
-          time: booking.time,
-          status: booking.status,
-          notes: booking.notes || '',
-          price: booking.price,
-          created_at: booking.createdAt
-        }
-      ]);
+      .insert([payload]);
 
     if (error) {
       console.warn('Supabase message inserting into bookings:', error);
@@ -78,13 +82,18 @@ export async function saveBookingToSupabase(booking: Booking): Promise<{ success
 }
 
 /**
- * Fetches all bookings from Supabase.
+ * Fetches bookings from Supabase, scoped by userId if not admin.
  */
-export async function fetchBookingsFromSupabase(): Promise<Booking[]> {
+export async function fetchBookingsFromSupabase(userId?: string, isAdmin?: boolean): Promise<Booking[]> {
   try {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*');
+    let query = supabase.from('bookings').select('*');
+
+    // Filter by user_id if they are a customer to implement multi-layered security
+    if (userId && !isAdmin) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn('Supabase message fetching bookings:', error);
@@ -99,14 +108,14 @@ export async function fetchBookingsFromSupabase(): Promise<Booking[]> {
 
     return data.map((row: any) => ({
       id: row.id,
-      customerId: row.customer_id || row.customerId || '',
+      customerId: row.user_id || row.customer_id || row.customerId || '',
       customerName: row.customer_name || row.customerName || '',
       customerEmail: row.customer_email || row.customerEmail || '',
       customerPhone: row.customer_phone || row.customerPhone || '',
       serviceId: row.service_id || row.serviceId || '',
       serviceName: row.service_name || row.serviceName || '',
-      date: row.date || '',
-      time: row.time || '',
+      date: row.booking_date || row.date || row.bookingDate || '',
+      time: row.booking_time || row.time || row.bookingTime || '',
       status: row.status || 'pending',
       notes: row.notes || '',
       price: typeof row.price === 'number' ? row.price : parseFloat(row.price || 0),
