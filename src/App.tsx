@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, Review, Service, AdminSettings } from './types';
 import { storage } from './lib/storage';
-import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase } from './lib/supabase';
+import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors } from './lib/supabase';
 
 // Import our modular components
 import Navbar from './components/Navbar';
@@ -13,7 +13,7 @@ import ReviewSection from './components/ReviewSection';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
 
-import { Calendar, Clock, Star, Scissors, Phone, MapPin, Sparkles, MessageSquare, Heart, Lock } from 'lucide-react';
+import { Calendar, Clock, Star, Scissors, Phone, MapPin, Sparkles, MessageSquare, Heart, Lock, Database, AlertTriangle, X, Copy, Check } from 'lucide-react';
 
 export default function App() {
   // Application Data States
@@ -41,6 +41,12 @@ export default function App() {
   
   // Selected service list for multi-select booking
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
+
+  // Supabase Database Connection & Schema Error states
+  const [supabaseError, setSupabaseError] = useState<any>(null);
+  const [showSqlGuide, setShowSqlGuide] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showAllBookings, setShowAllBookings] = useState(false);
 
   // Load from local storage on mount
   useEffect(() => {
@@ -95,6 +101,16 @@ export default function App() {
         // ignore
       }
     }
+  }, []);
+
+  // Subscribe to Supabase connection and query errors
+  useEffect(() => {
+    const unsubscribe = subscribeToSupabaseErrors((err) => {
+      setSupabaseError(err);
+    });
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Update localStorage helper wrappers
@@ -165,6 +181,11 @@ export default function App() {
     const updated = [newBooking, ...bookings];
     setBookings(updated);
     storage.saveBookings(updated);
+
+    // Automatically toggle See All Bookings to true and transition to the Bookings Portal
+    setShowAllBookings(true);
+    setActiveSection('my-bookings');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Persist to Supabase backend asynchronously
     const { success, error } = await saveBookingToSupabase(newBooking);
@@ -257,6 +278,9 @@ export default function App() {
 
   // Filter current customer's bookings or guest-searched bookings
   const myBookings = bookings.filter(b => {
+    if (showAllBookings) {
+      return true;
+    }
     if (currentUser) {
       return b.customerEmail.toLowerCase() === currentUser.email.toLowerCase() || 
              (currentUser.phone && b.customerPhone.replace(/[^0-9]/g, '') === currentUser.phone.replace(/[^0-9]/g, ''));
@@ -283,6 +307,47 @@ export default function App() {
         activeSection={activeSection}
         setActiveSection={setActiveSection}
       />
+
+      {/* Supabase Error Alert Banner */}
+      {supabaseError && (
+        <div className="bg-amber-50 border-b border-amber-200 py-3.5 px-4 sm:px-6 lg:px-8 shadow-xs relative z-30">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="p-1.5 bg-amber-100 text-amber-800 rounded-full shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </span>
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-charcoal flex items-center gap-1.5">
+                  Supabase Integration Action Needed
+                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 rounded-xs font-mono text-[9px] lowercase">
+                    {supabaseError.code || 'unknown'}
+                  </span>
+                </h4>
+                <p className="text-xs text-gray-600 mt-0.5 font-light">
+                  Successfully connected to Supabase project <strong className="font-semibold">jnhcswiajmdoxdhgfjvd</strong>, but a table error was encountered. 
+                  ({supabaseError.message || 'Table bookings does not exist or has RLS restrictions'}).
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+              <button
+                onClick={() => setShowSqlGuide(true)}
+                className="px-4 py-2 bg-charcoal text-white hover:bg-amber-600 hover:text-white text-[10px] uppercase tracking-wider font-bold rounded-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-3xs"
+              >
+                <Database className="w-3.5 h-3.5" />
+                Setup SQL Schema
+              </button>
+              <button
+                onClick={() => setSupabaseError(null)}
+                className="p-1 text-gray-400 hover:text-charcoal rounded-full transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Render */}
       <main className="flex-1">
@@ -385,25 +450,40 @@ export default function App() {
                 <span className="text-xs uppercase tracking-widest font-bold text-sand-200">GUEST PORTAL</span>
                 <h2 className="title-font text-4xl font-light text-charcoal">My Scheduled Treatments</h2>
                 <p className="text-xs text-gray-500 font-light mt-1">
-                  View, track, and manage your beauty appointments requested at {adminSettings.salonName}.
+                  View, track, and manage beauty appointments requested at {adminSettings.salonName}.
                 </p>
               </div>
 
-              <button
-                onClick={() => {
-                  setActiveSection('home');
-                  setTimeout(() => {
-                    const el = document.getElementById('booking-form-wrapper');
-                    if (el) el.scrollIntoView({ behavior: 'smooth' });
-                  }, 100);
-                }}
-                className="px-5 py-2.5 bg-charcoal text-white hover:bg-sand-200 hover:text-charcoal text-xs uppercase tracking-widest font-bold rounded-xs transition-colors cursor-pointer"
-              >
-                Schedule New Session
-              </button>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={() => setShowAllBookings(!showAllBookings)}
+                  className={`px-4 py-2.5 text-xs uppercase tracking-wider font-bold border transition-all duration-300 rounded-xs cursor-pointer flex items-center gap-1.5 ${
+                    showAllBookings
+                      ? 'bg-rose-500 text-white border-transparent shadow-3xs'
+                      : 'bg-white text-gray-600 border-sand-100 hover:border-rose-400 hover:text-rose-500'
+                  }`}
+                  title="Toggle between seeing only your bookings versus all bookings made on this app"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {showAllBookings ? 'Viewing All Bookings' : 'See All Bookings'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveSection('home');
+                    setTimeout(() => {
+                      const el = document.getElementById('booking-form-wrapper');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
+                  className="px-5 py-2.5 bg-charcoal text-white hover:bg-sand-200 hover:text-charcoal text-xs uppercase tracking-widest font-bold rounded-xs transition-colors cursor-pointer"
+                >
+                  Schedule New Session
+                </button>
+              </div>
             </div>
 
-            {!currentUser && (
+            {!showAllBookings && !currentUser && (
               <div className="bg-white border border-rose-100 p-6 sm:p-8 rounded-xs shadow-3xs max-w-2xl mx-auto mb-10 text-center relative overflow-hidden">
                 <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-rose-300 via-amber-300 to-rose-300 opacity-60" />
                 <span className="p-2 bg-rose-50 rounded-full text-rose-500 inline-flex mb-4">
@@ -451,7 +531,7 @@ export default function App() {
               </div>
             )}
 
-            {currentUser ? (
+            {currentUser || showAllBookings ? (
               myBookings.length === 0 ? (
                 <div className="bg-white border border-dashed border-sand-100 rounded-xs py-20 text-center max-w-2xl mx-auto">
                   <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -499,6 +579,9 @@ export default function App() {
                         <div className="flex items-center gap-2">
                           <Clock className="w-3.5 h-3.5 text-sand-200" />
                           <span>Time slot: <strong className="text-charcoal font-medium">{booking.time}</strong></span>
+                        </div>
+                        <div className="flex items-center gap-2 pt-1 border-t border-dashed border-sand-50 mt-1">
+                          <span className="text-[10px] text-gray-500">Guest: <strong className="text-charcoal font-normal">{booking.customerName} ({booking.customerPhone})</strong></span>
                         </div>
                       </div>
 
@@ -764,6 +847,154 @@ export default function App() {
         onRegisterSuccess={handleRegisterSuccess}
         allUsers={users}
       />
+
+      {/* Supabase SQL Guide Modal */}
+      {showSqlGuide && (
+        <div className="fixed inset-0 bg-charcoal/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-sand-100 w-full max-w-3xl rounded-xs shadow-xl overflow-hidden relative flex flex-col max-h-[90vh]">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-sand-100 flex justify-between items-center bg-sand-50">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 bg-charcoal text-white rounded-xs">
+                  <Database className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="title-font text-lg font-bold text-charcoal uppercase tracking-wider">
+                    Supabase Database Setup
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-mono tracking-wide mt-0.5">
+                    Project: jnhcswiajmdoxdhgfjvd.supabase.co
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSqlGuide(false)}
+                className="p-1.5 text-gray-400 hover:text-charcoal rounded-full hover:bg-sand-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content (Scrollable) */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs">
+              
+              <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-xs text-gray-600 leading-relaxed font-light">
+                <span className="font-bold text-amber-800 uppercase block mb-1">Why am I seeing this?</span>
+                Your Supabase project is connected successfully, but the required database table <strong className="font-medium text-charcoal">bookings</strong> is either missing or Row Level Security (RLS) is blocking inserts. Running this SQL script in your Supabase SQL Editor will instantly build the table and configure proper access permissions.
+              </div>
+
+              {/* Step-by-step instructions */}
+              <div>
+                <h4 className="font-bold uppercase tracking-wider text-charcoal mb-3">
+                  Setup Instructions (3 Simple Steps)
+                </h4>
+                <ol className="list-decimal pl-4 space-y-2 text-gray-600 font-light font-sans">
+                  <li>
+                    Open your <a href="https://supabase.com/dashboard/project/jnhcswiajmdoxdhgfjvd/editor" target="_blank" rel="noopener noreferrer" className="text-amber-800 font-bold hover:underline">Supabase SQL Editor Dashboard</a> in a new tab.
+                  </li>
+                  <li>
+                    Click <strong className="text-charcoal font-medium">New query</strong> (or use any blank SQL worksheet).
+                  </li>
+                  <li>
+                    Copy the SQL script below, paste it into the editor, and click the green <strong className="text-charcoal font-medium">Run</strong> button in the top right.
+                  </li>
+                </ol>
+              </div>
+
+              {/* SQL Code Block */}
+              <div>
+                <div className="flex justify-between items-center bg-charcoal text-gray-300 px-4 py-2 rounded-t-xs text-[10px] font-mono font-medium">
+                  <span>POSTGRESQL SCHEMA SETUP</span>
+                  <button
+                    onClick={() => {
+                      const sqlText = `-- 1. Create the bookings table
+create table if not exists bookings (
+  id text primary key,
+  customer_id text,
+  customer_name text not null,
+  customer_email text not null,
+  customer_phone text not null,
+  service_id text not null,
+  service_name text not null,
+  date text not null,
+  time text not null,
+  status text not null default 'pending',
+  notes text,
+  price numeric not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 2. Enable Row Level Security (RLS)
+alter table bookings enable row level security;
+
+-- 3. Create RLS policies for public guest/customer operations
+create policy "Allow public read access" on bookings for select using (true);
+create policy "Allow public insert access" on bookings for insert with check (true);
+create policy "Allow public update access" on bookings for update using (true);`;
+
+                      navigator.clipboard.writeText(sqlText);
+                      setCopiedSql(true);
+                      setTimeout(() => setCopiedSql(false), 2000);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-white/10 hover:bg-white/20 rounded-xs text-white transition-colors cursor-pointer"
+                  >
+                    {copiedSql ? (
+                      <>
+                        <Check className="w-3 h-3 text-green-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy SQL</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-4 bg-charcoal/95 text-sand-200 font-mono text-[11px] overflow-x-auto rounded-b-xs max-h-60 leading-relaxed scrollbar-thin">
+{`-- 1. Create the bookings table
+create table if not exists bookings (
+  id text primary key,
+  customer_id text,
+  customer_name text not null,
+  customer_email text not null,
+  customer_phone text not null,
+  service_id text not null,
+  service_name text not null,
+  date text not null,
+  time text not null,
+  status text not null default 'pending',
+  notes text,
+  price numeric not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- 2. Enable Row Level Security (RLS)
+alter table bookings enable row level security;
+
+-- 3. Create RLS policies for public guest/customer operations
+create policy "Allow public read access" on bookings for select using (true);
+create policy "Allow public insert access" on bookings for insert with check (true);
+create policy "Allow public update access" on bookings for update using (true);`}
+                </pre>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-sand-100 bg-sand-50 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSqlGuide(false)}
+                className="px-5 py-2.5 bg-charcoal text-white hover:bg-sand-200 hover:text-charcoal text-[10px] uppercase tracking-widest font-bold transition-colors cursor-pointer"
+              >
+                Close Window
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
