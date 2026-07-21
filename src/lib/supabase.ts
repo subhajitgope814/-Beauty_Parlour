@@ -3,7 +3,12 @@ import { Booking, Review, Service } from '../types';
 
 // Supabase configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jnhcswiajmdoxdhgfjvd.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb-sb_publishable_bWgm4nmXD-Nj1KKrVrhDCw_U2xzXcZz';
+let SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb-sb_publishable_bWgm4nmXD-Nj1KKrVrhDCw_U2xzXcZz';
+
+// Auto-clean any double prefix typo like 'sb-sb_publishable_' to 'sb_publishable_'
+if (SUPABASE_ANON_KEY.startsWith('sb-sb_publishable_')) {
+  SUPABASE_ANON_KEY = SUPABASE_ANON_KEY.substring(3);
+}
 
 // Global Error Tracking & Subscription
 export let lastSupabaseError: any = null;
