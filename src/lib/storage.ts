@@ -210,7 +210,7 @@ const DEFAULT_REVIEWS: Review[] = [
 const DEFAULT_SETTINGS: AdminSettings = {
   adminMobileNumber: '8132935520',
   salonName: 'Trisha Beauty Parlour',
-  salonAddress: '124 Nelson Street, City Center'
+  salonAddress: '23 Jolaibari, Belonia Road Colony, Kalir Bazar, South Tripura District, Tripura, India.'
 };
 
 // LocalStorage helpers
@@ -292,6 +292,10 @@ export const storage = {
       }
       if (settings.salonName === 'MERAKI Hair Studio' || settings.salonName === 'Meraki Hair Studio') {
         settings.salonName = 'Trisha Beauty Parlour';
+        changed = true;
+      }
+      if (settings.salonAddress === '124 Nelson Street, City Center') {
+        settings.salonAddress = '23 Jolaibari, Belonia Road Colony, Kalir Bazar, South Tripura District, Tripura, India.';
         changed = true;
       }
       if (changed) {

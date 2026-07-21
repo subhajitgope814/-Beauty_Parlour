@@ -474,6 +474,7 @@ export default function App() {
             <Hero 
               adminMobileNumber={adminSettings.adminMobileNumber}
               salonName={adminSettings.salonName}
+              salonAddress={adminSettings.salonAddress}
               onBookClick={() => {
                 const element = document.getElementById('booking-form-wrapper');
                 if (element) element.scrollIntoView({ behavior: 'smooth' });
@@ -927,10 +928,17 @@ export default function App() {
             <h4 className="text-[10px] uppercase tracking-widest font-bold text-sand-200 mb-4">
               Salon Sanctuary
             </h4>
-            <p className="text-xs text-gray-400 font-light leading-relaxed mb-4 flex gap-2 items-start">
-              <MapPin className="w-4 h-4 text-sand-200 shrink-0" />
-              <span>{adminSettings.salonAddress}</span>
-            </p>
+            <div className="text-xs text-gray-400 font-light leading-relaxed mb-4 flex gap-2 items-start group/footer-loc">
+              <MapPin className="w-4 h-4 text-sand-200 shrink-0 group-hover/footer-loc:animate-bounce" />
+              <a 
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adminSettings.salonAddress)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors decoration-sand-200/30 hover:underline"
+              >
+                {adminSettings.salonAddress}
+              </a>
+            </div>
             <button
               onClick={() => {
                 setActiveSection('home');

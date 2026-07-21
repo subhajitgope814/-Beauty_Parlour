@@ -1,5 +1,5 @@
 {
-  "name": "Meraki Hair Studio",
+  "name": "Trisha Beauty Parlour",
   "description": "Elegant beauty parlour and hair salon design with scheduling system, customer reviews management, secure staff and customer login, and booking approval workflow.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

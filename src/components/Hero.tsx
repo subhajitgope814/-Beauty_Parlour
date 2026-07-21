@@ -5,11 +5,12 @@ import indianSalonModel from '../assets/images/indian_salon_model_1783588068177.
 interface HeroProps {
   adminMobileNumber: string;
   salonName: string;
+  salonAddress: string;
   onBookClick: () => void;
   onExploreClick: () => void;
 }
 
-export default function Hero({ adminMobileNumber, salonName, onBookClick, onExploreClick }: HeroProps) {
+export default function Hero({ adminMobileNumber, salonName, salonAddress, onBookClick, onExploreClick }: HeroProps) {
   return (
     <div id="hero-section" className="relative overflow-hidden bg-rose-50/10">
       
@@ -113,11 +114,19 @@ export default function Hero({ adminMobileNumber, salonName, onBookClick, onExpl
           </div>
 
           {/* Quick Details Floating Box on Bottom Left */}
-          <div className="absolute bottom-6 left-6 z-10 bg-charcoal text-rose-50 p-5 border border-rose-200/10 max-w-[280px] transition-all duration-500 hover:translate-x-1.5 hover:shadow-lg cursor-pointer">
-            <span className="text-[9px] uppercase tracking-widest text-amber-300 font-bold block mb-1">VISIT US</span>
-            <p className="text-xs text-rose-100 leading-relaxed font-light mb-2">
-              124 Nelson Street, City Center
-            </p>
+          <div className="absolute bottom-6 left-6 z-10 bg-charcoal text-rose-50 p-5 border border-rose-200/10 max-w-[300px] transition-all duration-500 hover:translate-x-1.5 hover:shadow-lg cursor-pointer group/location">
+            <span className="text-[9px] uppercase tracking-widest text-amber-300 font-bold block mb-1 flex items-center gap-1">
+              <MapPin className="w-3 h-3 group-hover/location:animate-bounce" />
+              VISIT OUR SANCTUARY
+            </span>
+            <a 
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(salonAddress)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-rose-100 leading-relaxed font-light mb-3 block hover:text-white hover:underline transition-colors decoration-rose-300/50"
+            >
+              {salonAddress}
+            </a>
             <a 
               href={`tel:${adminMobileNumber}`}
               className="text-[10px] text-white hover:text-rose-100 transition-colors tracking-widest font-bold flex items-center gap-1"
