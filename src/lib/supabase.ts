@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Booking, Review } from '../types';
+import { Booking, Review, Service } from '../types';
 
 // Supabase configuration
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jnhcswiajmdoxdhgfjvd.supabase.co';
@@ -259,6 +259,144 @@ export async function deleteReviewFromSupabase(reviewId: string): Promise<boolea
     return true;
   } catch (err) {
     console.warn('Failed to delete review from Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
+/**
+ * Fetches all services from Supabase.
+ */
+export async function fetchServicesFromSupabase(): Promise<Service[]> {
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.warn('Supabase message fetching services:', error);
+      setLastSupabaseError(error);
+      return [];
+    }
+
+    if (!data) return [];
+
+    clearSupabaseError();
+
+    return data.map((row: any) => ({
+      id: row.id,
+      name: row.name || '',
+      category: row.category || '',
+      description: row.description || '',
+      price: typeof row.price === 'number' ? row.price : parseFloat(row.price || 0),
+      duration: row.duration || '',
+      image: row.image_url || row.image || '',
+      isActive: row.is_active !== undefined ? row.is_active : true
+    }));
+  } catch (err) {
+    console.warn('Failed to fetch services from Supabase:', err);
+    setLastSupabaseError(err);
+    return [];
+  }
+}
+
+/**
+ * Saves a new service into Supabase.
+ */
+export async function saveServiceToSupabase(service: Service): Promise<{ success: boolean; error: any }> {
+  try {
+    const payload: any = {
+      name: service.name,
+      category: service.category,
+      description: service.description,
+      price: service.price,
+      duration: service.duration,
+      image_url: service.image || '',
+      is_active: service.isActive !== undefined ? service.isActive : true
+    };
+
+    // Standard UUID check
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(service.id);
+    if (isUuid) {
+      payload.id = service.id;
+    }
+
+    const { error } = await supabase
+      .from('services')
+      .insert([payload]);
+
+    if (error) {
+      console.warn('Supabase message inserting service:', error);
+      setLastSupabaseError(error);
+      return { success: false, error };
+    }
+
+    console.log('Successfully saved service to Supabase');
+    clearSupabaseError();
+    return { success: true, error: null };
+  } catch (err) {
+    console.warn('Failed to save service to Supabase:', err);
+    setLastSupabaseError(err);
+    return { success: false, error: err };
+  }
+}
+
+/**
+ * Updates an existing service in Supabase.
+ */
+export async function updateServiceInSupabase(serviceId: string, service: Partial<Service>): Promise<boolean> {
+  try {
+    const payload: any = {};
+    if (service.name !== undefined) payload.name = service.name;
+    if (service.category !== undefined) payload.category = service.category;
+    if (service.description !== undefined) payload.description = service.description;
+    if (service.price !== undefined) payload.price = service.price;
+    if (service.duration !== undefined) payload.duration = service.duration;
+    if (service.image !== undefined) payload.image_url = service.image;
+    if (service.isActive !== undefined) payload.is_active = service.isActive;
+    payload.updated_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('services')
+      .update(payload)
+      .eq('id', serviceId);
+
+    if (error) {
+      console.warn('Supabase message updating service:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to update service in Supabase:', err);
+    setLastSupabaseError(err);
+    return false;
+  }
+}
+
+/**
+ * Deletes a service from Supabase.
+ */
+export async function deleteServiceFromSupabase(serviceId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('services')
+      .delete()
+      .eq('id', serviceId);
+
+    if (error) {
+      console.warn('Supabase message deleting service:', error);
+      setLastSupabaseError(error);
+      return false;
+    }
+
+    clearSupabaseError();
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete service from Supabase:', err);
     setLastSupabaseError(err);
     return false;
   }

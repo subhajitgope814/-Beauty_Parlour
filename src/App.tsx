@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Booking, Review, Service, AdminSettings } from './types';
 import { storage } from './lib/storage';
-import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors, saveReviewToSupabase, fetchReviewsFromSupabase, updateReviewApprovalInSupabase, deleteReviewFromSupabase } from './lib/supabase';
+import { saveBookingToSupabase, fetchBookingsFromSupabase, updateBookingStatusInSupabase, subscribeToSupabaseErrors, saveReviewToSupabase, fetchReviewsFromSupabase, updateReviewApprovalInSupabase, deleteReviewFromSupabase, fetchServicesFromSupabase, saveServiceToSupabase, updateServiceInSupabase, deleteServiceFromSupabase, lastSupabaseError } from './lib/supabase';
 
 // Import our modular components
 import Navbar from './components/Navbar';
@@ -26,6 +26,7 @@ export default function App() {
     salonAddress: ''
   });
   const [services, setServices] = useState<Service[]>([]);
+  const [isServicesLoading, setIsServicesLoading] = useState(true);
 
   // Session State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -102,6 +103,35 @@ export default function App() {
       }
     };
     syncReviews();
+
+    const syncServices = async () => {
+      setIsServicesLoading(true);
+      const dbServices = await fetchServicesFromSupabase();
+      if (dbServices && dbServices.length > 0) {
+        setServices(dbServices);
+        storage.saveServices(dbServices);
+      } else {
+        // Fallback to local
+        const localServices = storage.getServices();
+        if (localServices && localServices.length > 0) {
+          setServices(localServices);
+          // If Supabase returned healthy but empty array, seed it
+          if (dbServices && dbServices.length === 0 && !lastSupabaseError) {
+            console.log('Seeding initial default services to Supabase...');
+            for (const s of localServices) {
+              await saveServiceToSupabase(s);
+            }
+            const refreshed = await fetchServicesFromSupabase();
+            if (refreshed && refreshed.length > 0) {
+              setServices(refreshed);
+              storage.saveServices(refreshed);
+            }
+          }
+        }
+      }
+      setIsServicesLoading(false);
+    };
+    syncServices();
 
     // Auto-login simulated customer on start to make demo easy, or keep clean
     // For testing/evaluation purposes, keeping it clear but can load active session if present
@@ -188,6 +218,51 @@ export default function App() {
   const handleUpdateSettings = (newSettings: AdminSettings) => {
     setAdminSettings(newSettings);
     storage.saveSettings(newSettings);
+  };
+
+  const handleCreateService = async (newService: Service) => {
+    const updated = [...services, newService];
+    setServices(updated);
+    storage.saveServices(updated);
+
+    await saveServiceToSupabase(newService);
+
+    const refreshed = await fetchServicesFromSupabase();
+    if (refreshed && refreshed.length > 0) {
+      setServices(refreshed);
+      storage.saveServices(refreshed);
+    }
+  };
+
+  const handleUpdateService = async (serviceId: string, updatedData: Partial<Service>) => {
+    const updated = services.map(s => {
+      if (s.id === serviceId) {
+        return { ...s, ...updatedData };
+      }
+      return s;
+    });
+    setServices(updated);
+    storage.saveServices(updated);
+
+    await updateServiceInSupabase(serviceId, updatedData);
+
+    const refreshed = await fetchServicesFromSupabase();
+    if (refreshed && refreshed.length > 0) {
+      setServices(refreshed);
+      storage.saveServices(refreshed);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    const updated = services.filter(s => s.id !== serviceId);
+    setServices(updated);
+    storage.saveServices(updated);
+
+    await deleteServiceFromSupabase(serviceId);
+
+    const refreshed = await fetchServicesFromSupabase();
+    setServices(refreshed);
+    storage.saveServices(refreshed);
   };
 
   // Customer Interactions
@@ -415,6 +490,7 @@ export default function App() {
               selectedServices={selectedServices}
               onToggleService={handleToggleService}
               onSelectServiceForBooking={handleSelectServiceForBooking}
+              isLoading={isServicesLoading}
             />
 
             {/* Certified Beauty Excellence Credentials Section */}
@@ -453,6 +529,7 @@ export default function App() {
               selectedServices={selectedServices}
               onToggleService={handleToggleService}
               onSelectServiceForBooking={handleSelectServiceForBooking}
+              isLoading={isServicesLoading}
             />
             {/* Booking form following directly */}
             <div className="py-16 bg-sand-100/10 border-t border-sand-100" id="booking-form-wrapper">
@@ -768,6 +845,7 @@ export default function App() {
               <AdminPanel 
                 bookings={bookings}
                 reviews={reviews}
+                services={services}
                 adminSettings={adminSettings}
                 currentUser={currentUser}
                 onUpdateBookingStatus={handleUpdateBookingStatus}
@@ -775,6 +853,9 @@ export default function App() {
                 onToggleReviewApproval={handleToggleReviewApproval}
                 onDeleteReview={handleDeleteReview}
                 onUpdateSettings={handleUpdateSettings}
+                onCreateService={handleCreateService}
+                onUpdateService={handleUpdateService}
+                onDeleteService={handleDeleteService}
               />
             ) : (
               <div className="max-w-md mx-auto text-center py-24 px-4" id="admin-unauthorized-view">

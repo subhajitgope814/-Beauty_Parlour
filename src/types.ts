@@ -41,7 +41,8 @@ export interface Service {
   price: number;
   duration: string; // e.g. "45 mins"
   description: string;
-  image: string;
+  image: string; // Mapping standard
+  isActive?: boolean; // Active/Inactive status
 }
 
 export interface AdminSettings {

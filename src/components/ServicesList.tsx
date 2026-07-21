@@ -26,6 +26,7 @@ interface ServicesListProps {
   selectedServices: Service[];
   onToggleService: (service: Service) => void;
   onSelectServiceForBooking: (service: Service) => void;
+  isLoading?: boolean;
 }
 
 // Category lists for display priority
@@ -46,7 +47,8 @@ export default function ServicesList({
   services, 
   selectedServices, 
   onToggleService,
-  onSelectServiceForBooking 
+  onSelectServiceForBooking,
+  isLoading = false
 }: ServicesListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -72,7 +74,7 @@ export default function ServicesList({
 
   // Filter, Search, and Sort services
   const filteredAndSortedServices = useMemo(() => {
-    let result = [...services];
+    let result = services.filter(s => s.isActive !== false);
 
     // 1. Search filter
     if (searchTerm.trim() !== '') {
@@ -233,7 +235,33 @@ export default function ServicesList({
       </div>
 
       {/* Services Content Presentation */}
-      {filteredAndSortedServices.length === 0 ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+          {[1, 2, 3, 4, 5, 6].map((idx) => (
+            <div key={idx} className="bg-white border border-rose-100 rounded-sm p-6 min-h-[220px] animate-pulse flex flex-col justify-between relative overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-1 bg-gray-100" />
+              <div>
+                <div className="flex gap-2 mb-4">
+                  <div className="h-4 w-16 bg-rose-100/50 rounded" />
+                  <div className="h-4 w-12 bg-gray-100 rounded-full" />
+                </div>
+                <div className="flex justify-between items-start gap-4 mb-3">
+                  <div className="h-5 w-2/3 bg-gray-200 rounded" />
+                  <div className="h-5 w-12 bg-rose-100/50 rounded" />
+                </div>
+                <div className="space-y-2 mt-4">
+                  <div className="h-3 w-full bg-gray-100 rounded" />
+                  <div className="h-3 w-4/5 bg-gray-100 rounded" />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-6">
+                <div className="h-8 flex-1 bg-gray-50 rounded" />
+                <div className="h-8 w-24 bg-rose-500/10 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : filteredAndSortedServices.length === 0 ? (
         <div className="text-center py-16 bg-white border border-rose-100 rounded-sm">
           <Sparkles className="w-10 h-10 text-rose-300 mx-auto mb-3 animate-pulse" />
           <p className="text-sm text-gray-500 font-light">No treatments matching your filters found.</p>
