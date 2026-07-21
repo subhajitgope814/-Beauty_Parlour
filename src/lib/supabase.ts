@@ -5,9 +5,6 @@ import { Booking, Review, Service } from '../types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://jnhcswiajmdoxdhgfjvd.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_bWgm4nmXD-Nj1KKrVrhDCw_U2xzXcZz';
 
-// Initialize Supabase Client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // Global Error Tracking & Subscription
 export let lastSupabaseError: any = null;
 let errorListeners: ((err: any) => void)[] = [];
@@ -31,6 +28,41 @@ function setLastSupabaseError(err: any) {
   lastSupabaseError = err;
   errorListeners.forEach(l => l(err));
 }
+
+// Custom safe fetch to intercept any network connection errors (like DNS/ad-block/paused projects)
+// and prevent raw browser 'Failed to fetch' exceptions from triggering app-level crashes.
+const safeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  try {
+    return await fetch(input, init);
+  } catch (err: any) {
+    console.warn('Supabase offline-mode interceptor handled network exception:', err?.message || err);
+    
+    // Set last supabase error to notify UI of offline fallback mode
+    setLastSupabaseError({
+      code: 'OFFLINE_FALLBACK',
+      message: 'Database connection currently unavailable. Operating in secure offline mode.'
+    });
+
+    // Return a clean 503 response instead of letting the browser throw a raw uncaught 'Failed to fetch' error
+    return new Response(JSON.stringify({ error: 'offline', message: 'Database connection offline.' }), {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+};
+
+// Initialize Supabase Client with safeFetch
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: {
+    fetch: safeFetch
+  },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false
+  }
+});
 
 /**
  * Saves a new booking into Supabase database 'bookings' table.
