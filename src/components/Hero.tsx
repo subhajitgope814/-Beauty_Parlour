@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sparkles, MapPin, Star, Phone } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, MapPin, Star, Phone, LayoutGrid, Image as ImageIcon } from 'lucide-react';
 import indianSalonModel from '../assets/images/indian_salon_model_1783588068177.jpg';
 
 interface HeroProps {
@@ -10,7 +10,42 @@ interface HeroProps {
   onExploreClick: () => void;
 }
 
+const HERO_LOOKBOOK = [
+  {
+    id: 1,
+    url: "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Hair Spa",
+  },
+  {
+    id: 2,
+    url: "https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Hairstyling",
+  },
+  {
+    id: 3,
+    url: "https://images.unsplash.com/photo-1512290923902-8a9f81dc236c?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Facials",
+  },
+  {
+    id: 4,
+    url: "https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Nails",
+  },
+  {
+    id: 5,
+    url: "https://images.unsplash.com/photo-1583001931096-959e9a1a6223?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Eyelashes",
+  },
+  {
+    id: 6,
+    url: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&q=80&w=300&h=300",
+    name: "Massage",
+  }
+];
+
 export default function Hero({ adminMobileNumber, salonName, salonAddress, onBookClick, onExploreClick }: HeroProps) {
+  const [headerView, setHeaderView] = useState<'model' | 'lookbook'>('model');
+
   return (
     <div id="hero-section" className="relative overflow-hidden bg-rose-50/10">
       
@@ -84,55 +119,111 @@ export default function Hero({ adminMobileNumber, salonName, salonAddress, onBoo
 
         </div>
 
-        {/* Right Column (High fashion professional image of the Indian salon model) */}
-        <div className="col-span-1 lg:col-span-6 relative min-h-[500px] lg:min-h-0 flex items-center justify-center bg-rose-50/5 overflow-hidden group/img-container">
+        {/* Right Column (High fashion professional image of the Indian salon model & lookbook grid) */}
+        <div className="col-span-1 lg:col-span-6 relative min-h-[550px] lg:min-h-0 flex items-center justify-center bg-rose-50/5 overflow-hidden group/img-container border-l border-rose-100">
           
-          {/* Overlay frame effect */}
-          <div className="absolute inset-0 z-0 overflow-hidden">
-            <img 
-              src={indianSalonModel} 
-              alt="Trisha Salon luxury bridal & styling model" 
-              className="w-full h-full object-cover group-hover/img-container:scale-105 transition-all duration-1000 ease-out"
-              referrerPolicy="no-referrer"
-            />
-            {/* Elegant warm beige color overlay representing photo filters */}
-            <div className="absolute inset-0 bg-rose-500/5 mix-blend-multiply" />
-            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-rose-50/60 to-transparent" />
+          {/* View Toggle Controls */}
+          <div className="absolute top-6 left-6 z-20 flex bg-white/95 backdrop-blur-xs p-1 border border-rose-100 rounded-full shadow-md">
+            <button
+              onClick={() => setHeaderView('model')}
+              className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer flex items-center gap-1.5 ${
+                headerView === 'model'
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-rose-500'
+              }`}
+            >
+              <ImageIcon className="w-3.5 h-3.5" />
+              Signature Style
+            </button>
+            <button
+              onClick={() => setHeaderView('lookbook')}
+              className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-300 cursor-pointer flex items-center gap-1.5 ${
+                headerView === 'lookbook'
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-xs'
+                  : 'text-gray-600 hover:text-rose-500'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              Treatment Lookbook
+            </button>
           </div>
 
-          {/* Floater Badge */}
-          <div className="absolute top-6 right-6 z-10 bg-white/95 backdrop-blur-xs p-4 border border-rose-100 max-w-[220px] transition-all duration-500 hover:-translate-y-1.5 hover:shadow-md cursor-pointer hidden sm:block">
-            <div className="flex gap-1 text-amber-500 mb-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <Star key={s} className="w-3 h-3 fill-amber-500 text-amber-500" />
+          {headerView === 'model' ? (
+            /* Model View */
+            <div className="absolute inset-0 z-0 overflow-hidden animate-fade-in">
+              <img 
+                src={indianSalonModel} 
+                alt="Trisha Salon luxury bridal & styling model" 
+                className="w-full h-full object-cover group-hover/img-container:scale-105 transition-all duration-1000 ease-out"
+                referrerPolicy="no-referrer"
+              />
+              {/* Elegant warm beige color overlay representing photo filters */}
+              <div className="absolute inset-0 bg-rose-500/5 mix-blend-multiply" />
+              <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-rose-50/60 to-transparent" />
+            </div>
+          ) : (
+            /* Lookbook Grid View */
+            <div className="absolute inset-0 z-0 bg-rose-50/20 p-6 pt-20 pb-20 grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto animate-fade-in">
+              {HERO_LOOKBOOK.map((item) => (
+                <div 
+                  key={item.id} 
+                  className="relative group/tile aspect-square bg-white border border-rose-100 overflow-hidden shadow-2xs hover:shadow-md transition-shadow rounded-xs"
+                >
+                  <img 
+                    src={item.url} 
+                    alt={item.name} 
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover/tile:scale-110"
+                    referrerPolicy="no-referrer"
+                  />
+                  {/* Subtle label overlay */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-charcoal/80 to-transparent p-2 text-center">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-white">
+                      {item.name}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
-            <p className="text-[11px] italic text-gray-600 leading-snug">
-              "The most exquisite treatment experience!"
-            </p>
-            <span className="block text-[9px] uppercase tracking-wider text-charcoal font-bold mt-2">— Founder Trisha Roy</span>
-          </div>
+          )}
+
+          {/* Floater Badge (hidden on Lookbook view for cleaner grid) */}
+          {headerView === 'model' && (
+            <div className="absolute top-6 right-6 z-10 bg-white/95 backdrop-blur-xs p-4 border border-rose-100 max-w-[220px] transition-all duration-500 hover:-translate-y-1.5 hover:shadow-md cursor-pointer hidden sm:block animate-fade-in">
+              <div className="flex gap-1 text-amber-500 mb-1">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star key={s} className="w-3 h-3 fill-amber-500 text-amber-500" />
+                ))}
+              </div>
+              <p className="text-[11px] italic text-gray-600 leading-snug">
+                "The most exquisite treatment experience!"
+              </p>
+              <span className="block text-[9px] uppercase tracking-wider text-charcoal font-bold mt-2">— Founder Trisha Roy</span>
+            </div>
+          )}
 
           {/* Quick Details Floating Box on Bottom Left */}
-          <div className="absolute bottom-6 left-6 z-10 bg-charcoal text-rose-50 p-5 border border-rose-200/10 max-w-[300px] transition-all duration-500 hover:translate-x-1.5 hover:shadow-lg cursor-pointer group/location">
-            <span className="text-[9px] uppercase tracking-widest text-amber-300 font-bold block mb-1 flex items-center gap-1">
-              <MapPin className="w-3 h-3 group-hover/location:animate-bounce" />
-              VISIT OUR SANCTUARY
-            </span>
-            <a 
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(salonAddress)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-rose-100 leading-relaxed font-light mb-3 block hover:text-white hover:underline transition-colors decoration-rose-300/50"
-            >
-              {salonAddress}
-            </a>
+          <div className="absolute bottom-6 left-6 right-6 z-10 bg-charcoal text-rose-50 p-4 border border-rose-200/10 transition-all duration-500 hover:shadow-lg cursor-pointer group/location flex items-center justify-between gap-4">
+            <div>
+              <span className="text-[9px] uppercase tracking-widest text-amber-300 font-bold block mb-0.5 flex items-center gap-1">
+                <MapPin className="w-3 h-3 group-hover/location:animate-bounce" />
+                OUR SANCTUARY
+              </span>
+              <a 
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(salonAddress)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-rose-100 hover:text-white hover:underline transition-colors decoration-rose-300/50 block line-clamp-1"
+              >
+                {salonAddress}
+              </a>
+            </div>
+            
             <a 
               href={`tel:${adminMobileNumber}`}
-              className="text-[10px] text-white hover:text-rose-100 transition-colors tracking-widest font-bold flex items-center gap-1"
+              className="text-[10px] text-white hover:text-rose-100 transition-colors tracking-widest font-bold flex items-center gap-1 shrink-0 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xs animate-pulse"
             >
-              <Phone className="w-3 h-3 text-rose-300 animate-pulse" />
-              CALL: {adminMobileNumber}
+              <Phone className="w-3 h-3 text-rose-300" />
+              CALL NOW
             </a>
           </div>
 

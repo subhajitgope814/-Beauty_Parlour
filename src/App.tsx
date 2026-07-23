@@ -12,6 +12,7 @@ import BookingForm from './components/BookingForm';
 import ReviewSection from './components/ReviewSection';
 import AuthModal from './components/AuthModal';
 import AdminPanel from './components/AdminPanel';
+import InstagramSection from './components/InstagramSection';
 
 import { Calendar, Clock, Star, Scissors, Phone, MapPin, Sparkles, MessageSquare, Heart, Lock, Database, AlertTriangle, X, Copy, Check } from 'lucide-react';
 
@@ -164,6 +165,159 @@ export default function App() {
       unsubscribeErrors();
     };
   }, []);
+
+  // Synchronize browser routing with state
+  useEffect(() => {
+    // Initial route mapping on mount & route parser
+    const handleInitialPath = () => {
+      const path = window.location.pathname;
+      if (path === '/services') {
+        setActiveSection('services');
+        setIsAuthOpen(false);
+      } else if (path === '/reviews') {
+        setActiveSection('reviews');
+        setIsAuthOpen(false);
+      } else if (path === '/my-bookings') {
+        setActiveSection('my-bookings');
+        setIsAuthOpen(false);
+      } else if (path === '/admin') {
+        setActiveSection('admin');
+        setIsAuthOpen(false);
+      } else if (path === '/login') {
+        setActiveSection('home');
+        setAuthInitialMode('login');
+        setIsAuthOpen(true);
+      } else if (path === '/register') {
+        setActiveSection('home');
+        setAuthInitialMode('register');
+        setIsAuthOpen(true);
+      } else if (path === '/booking') {
+        setActiveSection('home');
+        setIsAuthOpen(false);
+        // Scroll to booking form
+        setTimeout(() => {
+          const element = document.getElementById('booking-form-wrapper');
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 500);
+      } else {
+        setActiveSection('home');
+        setIsAuthOpen(false);
+      }
+    };
+
+    handleInitialPath();
+
+    // Listen to popstate (back/forward buttons)
+    const handlePopState = () => {
+      handleInitialPath();
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // Update path in browser address bar and SEO tags when state changes
+  useEffect(() => {
+    let targetPath = '/';
+    if (activeSection === 'services') {
+      targetPath = '/services';
+    } else if (activeSection === 'reviews') {
+      targetPath = '/reviews';
+    } else if (activeSection === 'my-bookings') {
+      targetPath = '/my-bookings';
+    } else if (activeSection === 'admin') {
+      targetPath = '/admin';
+    } else if (isAuthOpen) {
+      if (authInitialMode === 'login') {
+        targetPath = '/login';
+      } else if (authInitialMode === 'register') {
+        targetPath = '/register';
+      }
+    }
+
+    // Only push if the actual path in browser differs from targetPath
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', targetPath);
+    }
+
+    // Dynamic SEO Metadata updates
+    const title = activeSection === 'services' ? "Our Expertise & Services | Trisha Beauty Parlour"
+      : activeSection === 'reviews' ? "Guest Testimonials & Reviews | Trisha Beauty Parlour"
+      : activeSection === 'my-bookings' ? "My Appointments | Trisha Beauty Parlour"
+      : activeSection === 'admin' ? "Staff Dashboard | Trisha Beauty Parlour Portal"
+      : targetPath === '/booking' ? "Book an Appointment | Trisha Beauty Parlour"
+      : targetPath === '/login' ? "Login | Trisha Beauty Parlour Profile Portal"
+      : targetPath === '/register' ? "Create an Account | Trisha Beauty Parlour"
+      : "Trisha Beauty Parlour | Luxury Hair, Skin & Nails Salon";
+
+    const description = activeSection === 'services' ? "Explore our premium selection of beauty services. Keratin smoothening, customized eyelash mappings, soothing aromatherapy massage, professional manicures and more."
+      : activeSection === 'reviews' ? "Read authentic reviews from our lovely guests who experienced pure pampering at our luxury beauty sanctuary."
+      : activeSection === 'my-bookings' ? "View, manage, and track your personalized beauty appointments and booking history."
+      : activeSection === 'admin' ? "Internal administrator panel and appointment scheduling operations manager for Trisha Beauty Parlour."
+      : "Trisha Beauty Parlour is a premium luxury salon offering specialized services including hair spas, facials, bridal makeup, nail art, and body therapies.";
+
+    // Update document title
+    document.title = title;
+
+    // Update meta description
+    let metaDesc = document.querySelector('meta[name="description"]');
+    if (!metaDesc) {
+      metaDesc = document.createElement('meta');
+      metaDesc.setAttribute('name', 'description');
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.setAttribute('content', description);
+
+    // Update canonical link
+    const canonicalUrl = `https://trishabeautyparlour.com${targetPath === '/' ? '' : targetPath}`;
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', canonicalUrl);
+
+    // Update Open Graph tags
+    const ogTags = {
+      'og:title': title,
+      'og:description': description,
+      'og:url': canonicalUrl,
+      'og:type': 'website',
+      'og:image': 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200&h=630',
+    };
+    Object.entries(ogTags).forEach(([property, value]) => {
+      let tag = document.querySelector(`meta[property="${property}"]`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute('property', property);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', value);
+    });
+
+    // Update Twitter Cards
+    const twitterTags = {
+      'twitter:card': 'summary_large_image',
+      'twitter:title': title,
+      'twitter:description': description,
+      'twitter:image': 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200&h=630',
+    };
+    Object.entries(twitterTags).forEach(([name, value]) => {
+      let tag = document.querySelector(`meta[name="${name}"]`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute('name', name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', value);
+    });
+
+  }, [activeSection, isAuthOpen, authInitialMode]);
 
   // Securely fetch bookings from Supabase whenever active user changes & set up realtime updates
   useEffect(() => {
@@ -580,6 +734,9 @@ export default function App() {
               onAddReview={handleAddReview}
               currentUser={currentUser}
             />
+
+            {/* Follow Us on Instagram Showcase Gallery Section */}
+            <InstagramSection />
 
             {/* Seamless Appointment Booking Section wrapper */}
             <div className="py-24 px-4 sm:px-6 lg:px-8 bg-sand-100/10 border-t border-sand-100" id="booking-form-wrapper">
